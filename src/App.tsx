@@ -45,7 +45,7 @@ const RES_PRESETS = [
   { label: "清晰 640×360", w: 640, h: 360 },
 ] as const;
 
-/** 环绕灵敏度：与「抓住场景拖动」同向 */
+/** 环绕灵敏度 */
 const ORBIT_YAW_SENS = 0.005;
 const ORBIT_PITCH_SENS = 0.004;
 
@@ -227,9 +227,9 @@ export default function App() {
   };
 
   /**
-   * 轨道控制符号（「抓住场景拖动」）：
-   * - 向右拖 → 场景内容跟着往右走 → yaw 取反（原先 +dx 会左右反）
-   * - 向下拖 → 场景内容跟着往下 → pitch 取反
+   * 轨道符号（已按反馈校准）：
+   * - 左右：向右拖 → yaw 减（抓住场景，左右已确认 OK）
+   * - 上下：向下拖 → pitch 加（先前 pitch 取反后上下反了，恢复 +dy）
    */
   const onPointerMove = (e: ReactPointerEvent) => {
     const d = dragRef.current;
@@ -237,7 +237,7 @@ export default function App() {
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     setYaw(d.yaw - dx * ORBIT_YAW_SENS);
-    setPitch(Math.max(-0.35, Math.min(0.75, d.pitch - dy * ORBIT_PITCH_SENS)));
+    setPitch(Math.max(-0.35, Math.min(0.75, d.pitch + dy * ORBIT_PITCH_SENS)));
   };
   const onPointerUp = () => {
     dragRef.current = null;
@@ -256,7 +256,7 @@ export default function App() {
             </p>
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">光线追踪学习器</h1>
             <p className="max-w-xl text-sm text-fg-muted md:text-base">
-              层次包围盒（BVH）加速求交。拖动画布环绕：方向为「抓住场景拖动」。
+              层次包围盒（BVH）加速求交。拖动画布环绕查看场景。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -333,7 +333,7 @@ export default function App() {
                 )}
               </div>
               <p className="border-t border-border px-4 py-2 text-xs text-fg-subtle">
-                拖拽：向右拖场景往右转；上下同理。多球场景可开关 BVH 对比速度。
+                拖拽环绕场景。多球场景可开关 BVH 对比速度。
               </p>
             </div>
 
