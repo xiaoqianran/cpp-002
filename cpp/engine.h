@@ -1,4 +1,4 @@
-// 引擎：编排 Camera + PathTracer + Film + Scene
+// 引擎：Camera + PathTracer + Film + Scene
 #pragma once
 
 #include "bvh.h"
@@ -12,11 +12,16 @@
 
 class engine {
 public:
-  /** 完整应用配置（场景/分辨率/开关变化时） */
   void set(const EngineConfig &cfg) {
+    const bool same_scene = (cfg.scene_id == config.scene_id && scene_root);
+    const bool same_size =
+        (cfg.width == config.width && cfg.height == config.height && !rgba.empty());
+    const bool bvh_changed = (cfg.flags.bvh != config.flags.bvh);
+
     config = cfg;
-    ensure_buffers();
-    rebuild_world();
+    if (!same_size) ensure_buffers();
+    if (!same_scene || bvh_changed || !scene_root) rebuild_world();
+
     cam.set_pose(cfg.pose);
     cam.initialize(cfg.width, cfg.height);
     tracer.set_flags(cfg.flags);
@@ -25,28 +30,26 @@ public:
     reset_accum();
   }
 
-  /** 仅姿态（轨道拖拽） */
+  /** mode: 0=完整 set  1=仅相机姿态 */
+  void apply_packed(const double *p, int n, int mode) {
+    if (mode == 1 && n >= kConfigPackSize && !rgba.empty()) {
+      config.pose.lookfrom = point3(p[9], p[10], p[11]);
+      config.pose.lookat = point3(p[12], p[13], p[14]);
+      config.pose.vfov = p[15];
+      config.pose.defocus_angle = p[16];
+      config.pose.focus_dist = p[17];
+      cam.set_pose(config.pose);
+      cam.initialize(config.width, config.height);
+      reset_accum();
+      return;
+    }
+    set(unpack_config(p, n));
+  }
+
   void set_pose(const CameraPose &pose) {
     config.pose = pose;
     cam.set_pose(pose);
     cam.initialize(config.width, config.height);
-    reset_accum();
-  }
-
-  /** 仅积分开关 / 深度 / 调试 */
-  void set_flags(const TraceFlags &flags) {
-    config.flags = flags;
-    // bvh 变化需要重建
-    if (flags.bvh != use_bvh_built) {
-      rebuild_world();
-    }
-    tracer.set_flags(flags);
-    reset_accum();
-  }
-
-  void set_background(const color &c) {
-    config.background = c;
-    tracer.background = c;
     reset_accum();
   }
 
@@ -56,15 +59,14 @@ public:
   }
 
   void render_pass(int spp) {
-    if (config.width <= 0 || config.height <= 0 || !scene_root) return;
+    if (config.width <= 0 || config.height <= 0 || !scene_root || rgba.empty()) return;
     if (spp < 1) spp = 1;
 
     for (int j = 0; j < config.height; ++j) {
       for (int i = 0; i < config.width; ++i) {
         color pixel(0, 0, 0);
         for (int s = 0; s < spp; ++s) {
-          ray r = cam.get_ray(i, j);
-          pixel += tracer.trace(r, *scene_root);
+          pixel += tracer.trace(cam.get_ray(i, j), *scene_root);
         }
         const size_t idx = static_cast<size_t>((j * config.width + i) * 3);
         accum[idx + 0] += pixel.x();
@@ -76,7 +78,6 @@ public:
     bake_rgba();
   }
 
-  // —— 兼容旧 bridge 的细粒度 setter（内部改 config 再投影）——
   void setup(int w, int h, int scene_id) {
     config.width = w;
     config.height = h;
@@ -107,37 +108,31 @@ public:
     tracer.set_flags(config.flags);
     reset_accum();
   }
-
   void set_debug_mode(int mode) {
     config.flags.debug_mode = mode < 0 ? 0 : mode;
     tracer.set_flags(config.flags);
     reset_accum();
   }
-
   void set_use_bvh(int enabled) {
     config.flags.bvh = enabled != 0;
     rebuild_world();
     reset_accum();
   }
-
   void set_use_nee(int enabled) {
     config.flags.nee = enabled != 0;
     tracer.set_flags(config.flags);
     reset_accum();
   }
-
   void set_use_mis(int enabled) {
     config.flags.mis = enabled != 0;
     tracer.set_flags(config.flags);
     reset_accum();
   }
-
   void set_use_rr(int enabled) {
     config.flags.rr = enabled != 0;
     tracer.set_flags(config.flags);
     reset_accum();
   }
-
   void set_scene(int id) {
     config.scene_id = id;
     config.background = scene_background(id);
@@ -145,8 +140,11 @@ public:
     rebuild_world();
     reset_accum();
   }
-
-  void set_background_rgb(double r, double g, double b) { set_background(color(r, g, b)); }
+  void set_background_rgb(double r, double g, double b) {
+    config.background = color(r, g, b);
+    tracer.background = config.background;
+    reset_accum();
+  }
 
   int get_width() const { return config.width; }
   int get_height() const { return config.height; }
@@ -161,7 +159,6 @@ public:
   int get_light_count() const { return static_cast<int>(lights.size()); }
   unsigned char *get_rgba() { return rgba.data(); }
   size_t rgba_bytes() const { return rgba.size(); }
-  const EngineConfig &get_config() const { return config; }
 
 private:
   EngineConfig config;
@@ -174,7 +171,6 @@ private:
   std::vector<unsigned char> rgba;
   int samples_done = 0;
   int primitive_count = 0;
-  bool use_bvh_built = true;
 
   void ensure_buffers() {
     const size_t n = static_cast<size_t>(config.width * config.height);
@@ -185,17 +181,15 @@ private:
   void rebuild_world() {
     build_scene(config.scene_id, raw_world, lights);
     primitive_count = static_cast<int>(raw_world.objects.size());
-    use_bvh_built = config.flags.bvh;
     tracer.lights = &lights;
-    if (config.flags.bvh && primitive_count > 0) {
+    if (config.flags.bvh && primitive_count > 0)
       scene_root = make_shared<bvh_node>(raw_world);
-    } else {
+    else
       scene_root = make_shared<hittable_list>(raw_world);
-    }
   }
 
   void bake_rgba() {
-    if (samples_done <= 0) return;
+    if (samples_done <= 0 || rgba.empty()) return;
     const double inv = 1.0 / samples_done;
     for (int n = 0; n < config.width * config.height; ++n) {
       color c(accum[static_cast<size_t>(n * 3 + 0)] * inv,
@@ -206,5 +200,4 @@ private:
   }
 };
 
-// 兼容旧名
 using renderer = engine;

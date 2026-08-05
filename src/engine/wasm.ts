@@ -1,26 +1,11 @@
 /**
- * WASM 适配层：唯一知道 emscripten ccall 的地方
+ * WASM 适配：主路径 applyConfigPacked
  */
 
+import { CONFIG_PACK_SIZE } from "./pack";
+
 export type RayTracerApi = {
-  init: (width: number, height: number, sceneId: number) => void;
-  setCamera: (
-    lx: number,
-    ly: number,
-    lz: number,
-    ax: number,
-    ay: number,
-    az: number,
-    vfov: number,
-    defocus: number,
-    focus: number,
-  ) => void;
-  setMaxDepth: (depth: number) => void;
-  setDebugMode: (mode: number) => void;
-  setUseBvh: (enabled: boolean) => void;
-  setUseNee: (enabled: boolean) => void;
-  setUseMis: (enabled: boolean) => void;
-  setUseRr: (enabled: boolean) => void;
+  applyConfigPacked: (packed: Float64Array, mode: 0 | 1) => void;
   reset: () => void;
   renderPass: (spp: number) => void;
   samples: () => number;
@@ -39,6 +24,8 @@ type EmscriptenModule = {
     args: unknown[],
   ) => unknown;
   HEAPU8: Uint8Array;
+  _malloc: (n: number) => number;
+  _free: (p: number) => void;
   _rt_rgba_ptr: () => number;
   _rt_rgba_bytes: () => number;
 };
@@ -62,7 +49,6 @@ let loaderPromise: Promise<void> | null = null;
 function loadScript(src: string): Promise<void> {
   if (typeof window.createRayTracerModule === "function") return Promise.resolve();
   if (loaderPromise) return loaderPromise;
-
   loaderPromise = new Promise((resolve, reject) => {
     const s = document.createElement("script");
     s.src = src;
@@ -104,46 +90,29 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     (...a: Parameters<T>): ReturnType<T> =>
       mod.ccall(name, ret, args, a as unknown[]) as ReturnType<T>;
 
-  const setUseBvhRaw = wrap<(e: number) => void>("rt_set_use_bvh", null, ["number"]);
-  const setUseNeeRaw = wrap<(e: number) => void>("rt_set_use_nee", null, ["number"]);
-  const setUseMisRaw = wrap<(e: number) => void>("rt_set_use_mis", null, ["number"]);
-  const setUseRrRaw = wrap<(e: number) => void>("rt_set_use_rr", null, ["number"]);
+  const applyRaw = wrap<(ptr: number, n: number, mode: number) => void>(
+    "rt_apply_config",
+    null,
+    ["number", "number", "number"],
+  );
 
   return {
-    init: wrap<(w: number, h: number, s: number) => void>("rt_init", null, [
-      "number",
-      "number",
-      "number",
-    ]),
-    setCamera: wrap<
-      (
-        lx: number,
-        ly: number,
-        lz: number,
-        ax: number,
-        ay: number,
-        az: number,
-        vfov: number,
-        defocus: number,
-        focus: number,
-      ) => void
-    >("rt_set_camera", null, [
-      "number",
-      "number",
-      "number",
-      "number",
-      "number",
-      "number",
-      "number",
-      "number",
-      "number",
-    ]),
-    setMaxDepth: wrap<(d: number) => void>("rt_set_max_depth", null, ["number"]),
-    setDebugMode: wrap<(m: number) => void>("rt_set_debug_mode", null, ["number"]),
-    setUseBvh: (e) => setUseBvhRaw(e ? 1 : 0),
-    setUseNee: (e) => setUseNeeRaw(e ? 1 : 0),
-    setUseMis: (e) => setUseMisRaw(e ? 1 : 0),
-    setUseRr: (e) => setUseRrRaw(e ? 1 : 0),
+    applyConfigPacked: (packed: Float64Array, mode: 0 | 1) => {
+      if (packed.length < CONFIG_PACK_SIZE) {
+        throw new Error(`config pack 长度 ${packed.length} < ${CONFIG_PACK_SIZE}`);
+      }
+      const nbytes = CONFIG_PACK_SIZE * 8;
+      const ptr = mod._malloc(nbytes);
+      if (!ptr) throw new Error("WASM malloc 失败");
+      try {
+        // 经 HEAPU8 写入，避免 HEAPF64 视图对齐/过期问题
+        const bytes = new Uint8Array(packed.buffer, packed.byteOffset, nbytes);
+        mod.HEAPU8.set(bytes, ptr);
+        applyRaw(ptr, CONFIG_PACK_SIZE, mode);
+      } finally {
+        mod._free(ptr);
+      }
+    },
     reset: wrap<() => void>("rt_reset", null, []),
     renderPass: wrap<(spp: number) => void>("rt_render_pass", null, ["number"]),
     samples: wrap<() => number>("rt_samples", "number", []),
@@ -154,6 +123,8 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     rgba: () => {
       const ptr = mod._rt_rgba_ptr();
       const bytes = mod._rt_rgba_bytes();
+      if (bytes <= 0) return new Uint8ClampedArray(0);
+      // 内存增长后需从当前 buffer 切片
       return new Uint8ClampedArray(mod.HEAPU8.buffer, ptr, bytes);
     },
   };

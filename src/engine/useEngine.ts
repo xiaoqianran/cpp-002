@@ -19,10 +19,6 @@ export type EngineSnapshot = {
   lightCount: number;
 };
 
-/**
- * 引擎钩子：持有 WASM，把 Config 投影进去，驱动 rAF 采样。
- * UI 只读写 Config + running，不碰 ccall。
- */
 export function useEngine(cfg: EngineConfig, running: boolean) {
   const apiRef = useRef<RayTracerApi | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -47,13 +43,15 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
     if (!api || !canvas) return;
     const w = api.width();
     const h = api.height();
+    if (w <= 0 || h <= 0) return;
+    const rgba = api.rgba();
+    if (rgba.length < w * h * 4) return;
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
     }
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const rgba = api.rgba();
     ctx.putImageData(new ImageData(new Uint8ClampedArray(rgba), w, h), 0, 0);
     setSnap((s) => ({
       ...s,
@@ -63,7 +61,6 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
     }));
   }, []);
 
-  // 加载 WASM 一次
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -72,6 +69,9 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
         if (cancelled) return;
         apiRef.current = api;
         applyConfig(api, cfgRef.current);
+        if (api.width() <= 0 || api.rgba().length === 0) {
+          throw new Error("applyConfig 后缓冲区为空，请检查 rt_apply_config");
+        }
         prevCfgRef.current = { ...cfgRef.current };
         setSnap((s) => ({ ...s, status: "ready", error: null }));
         paint();
@@ -89,7 +89,6 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
     };
   }, [paint]);
 
-  // Config → C++ 唯一同步
   useEffect(() => {
     const api = apiRef.current;
     if (!api || snap.status !== "ready") return;
@@ -103,7 +102,6 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
     paint();
   }, [cfg, snap.status, paint]);
 
-  // 渲染循环
   useEffect(() => {
     if (snap.status !== "ready" || !running) return;
     let alive = true;
