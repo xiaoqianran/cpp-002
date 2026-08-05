@@ -45,6 +45,10 @@ const RES_PRESETS = [
   { label: "清晰 640×360", w: 640, h: 360 },
 ] as const;
 
+/** 环绕灵敏度：与「抓住场景拖动」同向 */
+const ORBIT_YAW_SENS = 0.005;
+const ORBIT_PITCH_SENS = 0.004;
+
 function orbitPosition(
   yaw: number,
   pitch: number,
@@ -151,7 +155,6 @@ export default function App() {
   const reinit = useCallback(async () => {
     const api = apiRef.current;
     if (!api) return;
-    // 先设 BVH，再 init（init 内 rebuild 会读 use_bvh）
     api.setUseBvh(useBvh);
     api.init(res.w, res.h, sceneId);
     api.setUseBvh(useBvh);
@@ -222,13 +225,19 @@ export default function App() {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = { x: e.clientX, y: e.clientY, yaw, pitch };
   };
+
+  /**
+   * 轨道控制符号（「抓住场景拖动」）：
+   * - 向右拖 → 场景内容跟着往右走 → yaw 取反（原先 +dx 会左右反）
+   * - 向下拖 → 场景内容跟着往下 → pitch 取反
+   */
   const onPointerMove = (e: ReactPointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
-    setYaw(d.yaw + dx * 0.005);
-    setPitch(Math.max(-0.35, Math.min(0.75, d.pitch + dy * 0.004)));
+    setYaw(d.yaw - dx * ORBIT_YAW_SENS);
+    setPitch(Math.max(-0.35, Math.min(0.75, d.pitch - dy * ORBIT_PITCH_SENS)));
   };
   const onPointerUp = () => {
     dragRef.current = null;
@@ -247,7 +256,7 @@ export default function App() {
             </p>
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">光线追踪学习器</h1>
             <p className="max-w-xl text-sm text-fg-muted md:text-base">
-              层次包围盒（BVH）加速求交。切到「随机多球」后开关 BVH，对比每帧毫秒数。
+              层次包围盒（BVH）加速求交。拖动画布环绕：方向为「抓住场景拖动」。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -324,7 +333,7 @@ export default function App() {
                 )}
               </div>
               <p className="border-t border-border px-4 py-2 text-xs text-fg-subtle">
-                多球场景关闭 BVH 会明显变慢（暴力 O(n) vs 约 O(log n)）。
+                拖拽：向右拖场景往右转；上下同理。多球场景可开关 BVH 对比速度。
               </p>
             </div>
 
