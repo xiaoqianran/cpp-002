@@ -20,6 +20,8 @@ export type RayTracerApi = {
   setDebugMode: (mode: number) => void;
   setUseBvh: (enabled: boolean) => void;
   setUseNee: (enabled: boolean) => void;
+  setUseMis: (enabled: boolean) => void;
+  setUseRr: (enabled: boolean) => void;
   reset: () => void;
   renderPass: (spp: number) => void;
   width: () => number;
@@ -27,6 +29,8 @@ export type RayTracerApi = {
   samples: () => number;
   useBvh: () => number;
   useNee: () => number;
+  useMis: () => number;
+  useRr: () => number;
   primitiveCount: () => number;
   lightCount: () => number;
   rgba: () => Uint8ClampedArray;
@@ -147,6 +151,8 @@ export async function createRayTracer(): Promise<RayTracerApi> {
   const setDebugMode = wrap<(m: number) => void>("rt_set_debug_mode", null, ["number"]);
   const setUseBvhRaw = wrap<(e: number) => void>("rt_set_use_bvh", null, ["number"]);
   const setUseNeeRaw = wrap<(e: number) => void>("rt_set_use_nee", null, ["number"]);
+  const setUseMisRaw = wrap<(e: number) => void>("rt_set_use_mis", null, ["number"]);
+  const setUseRrRaw = wrap<(e: number) => void>("rt_set_use_rr", null, ["number"]);
   const reset = wrap<() => void>("rt_reset", null, []);
   const renderPass = wrap<(spp: number) => void>("rt_render_pass", null, ["number"]);
   const width = wrap<() => number>("rt_width", "number", []);
@@ -154,6 +160,8 @@ export async function createRayTracer(): Promise<RayTracerApi> {
   const samples = wrap<() => number>("rt_samples", "number", []);
   const useBvh = wrap<() => number>("rt_use_bvh", "number", []);
   const useNee = wrap<() => number>("rt_use_nee", "number", []);
+  const useMis = wrap<() => number>("rt_use_mis", "number", []);
+  const useRr = wrap<() => number>("rt_use_rr", "number", []);
   const primitiveCount = wrap<() => number>("rt_primitive_count", "number", []);
   const lightCount = wrap<() => number>("rt_light_count", "number", []);
 
@@ -165,6 +173,8 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     setDebugMode,
     setUseBvh: (enabled: boolean) => setUseBvhRaw(enabled ? 1 : 0),
     setUseNee: (enabled: boolean) => setUseNeeRaw(enabled ? 1 : 0),
+    setUseMis: (enabled: boolean) => setUseMisRaw(enabled ? 1 : 0),
+    setUseRr: (enabled: boolean) => setUseRrRaw(enabled ? 1 : 0),
     reset,
     renderPass,
     width,
@@ -172,6 +182,8 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     samples,
     useBvh,
     useNee,
+    useMis,
+    useRr,
     primitiveCount,
     lightCount,
     rgba: () => {

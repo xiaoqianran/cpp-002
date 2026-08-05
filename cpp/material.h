@@ -1,7 +1,8 @@
-// 材质：漫反射 / 金属 / 介质 / 发光体
+// 材质：漫反射（余弦采样）/ 金属 / 介质 / 发光体
 #pragma once
 
 #include "hittable.h"
+#include "onb.h"
 #include "rt_common.h"
 #include "vec3.h"
 
@@ -23,11 +24,14 @@ public:
     return color(0, 0, 0);
   }
 
-  // 是否漫反射（可做 NEE 直接光）
   virtual bool is_lambertian() const { return false; }
 
-  // 朗伯 BRDF = albedo/π；非朗伯返回 0
   virtual color brdf_lambert(const hit_record &) const { return color(0, 0, 0); }
+
+  // 散射方向的 pdf（立体角）；非朗伯返回 -1 表示 delta / 未定义
+  virtual double scattering_pdf(const ray &, const hit_record &, const ray &) const {
+    return -1.0;
+  }
 };
 
 class lambertian : public material {
@@ -36,9 +40,11 @@ public:
 
   bool scatter(const ray &, const hit_record &rec, color &attenuation,
                ray &scattered) const override {
-    auto scatter_direction = rec.normal + random_unit_vector();
-    if (scatter_direction.near_zero()) scatter_direction = rec.normal;
-    scattered = ray(rec.p, scatter_direction);
+    onb uvw;
+    uvw.build_from_w(rec.normal);
+    auto scatter_direction = uvw.local(random_cosine_direction());
+    scattered = ray(rec.p, unit_vector(scatter_direction));
+    // 与 pdf=cos/π、BRDF=albedo/π 相消 → 权重 = albedo
     attenuation = albedo;
     return true;
   }
@@ -46,6 +52,11 @@ public:
   bool is_lambertian() const override { return true; }
 
   color brdf_lambert(const hit_record &) const override { return albedo / pi; }
+
+  double scattering_pdf(const ray &, const hit_record &rec, const ray &scattered) const override {
+    auto cos_theta = dot(rec.normal, unit_vector(scattered.direction()));
+    return cos_theta < 0 ? 0 : cos_theta / pi;
+  }
 
 private:
   color albedo;

@@ -96,6 +96,8 @@ export default function App() {
   const [debugMode, setDebugMode] = useState(0);
   const [useBvh, setUseBvh] = useState(true);
   const [useNee, setUseNee] = useState(true);
+  const [useMis, setUseMis] = useState(true);
+  const [useRr, setUseRr] = useState(true);
   const [lightCount, setLightCount] = useState(0);
   const [primCount, setPrimCount] = useState(0);
   const [resIdx, setResIdx] = useState(0);
@@ -160,14 +162,18 @@ export default function App() {
     if (!api) return;
     api.setUseBvh(useBvh);
     api.setUseNee(useNee);
+    api.setUseMis(useMis);
+    api.setUseRr(useRr);
     api.init(res.w, res.h, sceneId);
     api.setUseBvh(useBvh);
     api.setUseNee(useNee);
+    api.setUseMis(useMis);
+    api.setUseRr(useRr);
     api.setMaxDepth(maxDepth);
     api.setDebugMode(debugMode);
     applyCamera(api);
     paint();
-  }, [res.w, res.h, sceneId, maxDepth, debugMode, useBvh, useNee, applyCamera, paint]);
+  }, [res.w, res.h, sceneId, maxDepth, debugMode, useBvh, useNee, useMis, useRr, applyCamera, paint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,9 +184,13 @@ export default function App() {
         apiRef.current = api;
         api.setUseBvh(useBvh);
         api.setUseNee(useNee);
+        api.setUseMis(useMis);
+        api.setUseRr(useRr);
         api.init(res.w, res.h, sceneId);
         api.setUseBvh(useBvh);
         api.setUseNee(useNee);
+        api.setUseMis(useMis);
+        api.setUseRr(useRr);
         api.setMaxDepth(maxDepth);
         api.setDebugMode(debugMode);
         applyCamera(api);
@@ -201,7 +211,7 @@ export default function App() {
   useEffect(() => {
     if (status !== "ready") return;
     void reinit();
-  }, [resIdx, sceneId, maxDepth, debugMode, useBvh, useNee, status, reinit]);
+  }, [resIdx, sceneId, maxDepth, debugMode, useBvh, useNee, useMis, useRr, status, reinit]);
 
   useEffect(() => {
     if (status !== "ready" || !apiRef.current) return;
@@ -263,7 +273,7 @@ export default function App() {
             </p>
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">光线追踪学习器</h1>
             <p className="max-w-xl text-sm text-fg-muted md:text-base">
-              BVH 加速 + NEE 面光采样。康奈尔箱开 NEE 后噪点更少。拖拽环绕相机。
+              SAH-BVH + NEE + MIS + 俄罗斯轮盘。康奈尔箱默认全开。拖拽环绕相机。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -300,7 +310,7 @@ export default function App() {
                     {status === "loading" && "加载 WASM…"}
                     {status === "error" && "加载失败"}
                     {status === "ready" &&
-                      `${res.w}×${res.h} · ${samples} spp · ${passMs.toFixed(0)} ms · ${primCount} 体 · BVH ${useBvh ? "开" : "关"} · NEE ${useNee ? "开" : "关"}`}
+                      `${res.w}×${res.h} · ${samples} spp · ${passMs.toFixed(0)} ms · ${primCount} 体 · BVH ${useBvh ? "开" : "关"} · NEE ${useNee ? "开" : "关"} · MIS ${useMis ? "开" : "关"} · RR ${useRr ? "开" : "关"}`}
                   </span>
                 </div>
                 <button
@@ -408,6 +418,39 @@ export default function App() {
               </button>
               <p className="text-xs text-fg-subtle">
                 康奈尔箱建议开启：每条路径主动朝灯采样，间接光噪点更少。光源数 {lightCount || "—"}。
+              </p>
+            </Panel>
+
+
+            <Panel title="高级采样" icon={<Sparkles className="size-4" />}>
+              <button
+                type="button"
+                data-testid="toggle-mis"
+                onClick={() => setUseMis((v) => !v)}
+                className={`flex h-11 w-full items-center justify-between rounded-[var(--radius-md)] border px-3 text-sm transition ${
+                  useMis
+                    ? "border-border-strong bg-bg-subtle"
+                    : "border-border bg-bg text-fg-muted"
+                }`}
+              >
+                <span>MIS 多重重要性采样</span>
+                <span className="font-mono text-xs">{useMis ? "ON" : "OFF"}</span>
+              </button>
+              <button
+                type="button"
+                data-testid="toggle-rr"
+                onClick={() => setUseRr((v) => !v)}
+                className={`flex h-11 w-full items-center justify-between rounded-[var(--radius-md)] border px-3 text-sm transition ${
+                  useRr
+                    ? "border-border-strong bg-bg-subtle"
+                    : "border-border bg-bg text-fg-muted"
+                }`}
+              >
+                <span>俄罗斯轮盘截断</span>
+                <span className="font-mono text-xs">{useRr ? "ON" : "OFF"}</span>
+              </button>
+              <p className="text-xs text-fg-subtle">
+                MIS 合并「朝灯采样」与「撞到灯」的贡献；RR 在 3 次反弹后按亮度随机终止，加速长路径。
               </p>
             </Panel>
 

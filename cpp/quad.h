@@ -13,6 +13,7 @@ public:
     area = n.length();
     D = dot(normal, Q);
     w = n / dot(n, n);
+    center = Q + 0.5 * u + 0.5 * v;
 
     point3 p0 = Q;
     point3 p1 = Q + u;
@@ -44,14 +45,12 @@ public:
 
   aabb bounding_box() const override { return bbox; }
 
-  // 面光源均匀采样：P = Q + s u + t v
-  point3 sample_point() const {
-    return Q + (random_double() * u) + (random_double() * v);
-  }
+  point3 sample_point() const { return Q + (random_double() * u) + (random_double() * v); }
 
   double surface_area() const { return area; }
   vec3 outward_normal() const { return normal; }
   shared_ptr<material> material_ptr() const { return mat; }
+  point3 centroid() const { return center; }
 
 private:
   point3 Q;
@@ -61,5 +60,6 @@ private:
   double D;
   vec3 w;
   double area = 0;
+  point3 center;
   aabb bbox;
 };

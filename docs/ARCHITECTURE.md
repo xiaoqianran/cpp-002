@@ -1,57 +1,43 @@
-# 架构深潜（简体中文）
+# 架构深潜
 
-## 1. 渲染链路
-
-```mermaid
-flowchart TB
-  UI[React] --> RT[renderer]
-  RT --> CAM[camera::ray_color]
-  CAM --> ROOT[BVH / list]
-  CAM --> NEE[sample_direct_light]
-  NEE --> Lights[面光源 quads]
-  NEE --> Shadow[阴影射线]
-```
-
-## 2. NEE（下一事件估计）
+## 采样栈
 
 ```mermaid
 flowchart TB
-  Hit[命中朗伯表面] --> Pick[均匀选灯 + 面上采点]
-  Pick --> Shadow{阴影射线遮挡?}
-  Shadow -->|是| Zero[贡献 0]
-  Shadow -->|否| Eval["L += f·Le·cos / pdf_ω"]
-  Hit --> Bounce[随机散射继续间接]
+  Cam[相机射线] --> Hit{命中}
+  Hit -->|灯| CamEmit[直视 emit]
+  Hit -->|朗伯| NEE[NEE 面光 × MIS_w]
+  Hit -->|任意| Scatter[BSDF 散射]
+  Scatter --> RR{bounce≥3 RR?}
+  RR -->|死| Stop
+  RR -->|活| Hit2[递归]
+  Hit2 -->|灯| MisEmit[emit × MIS_w]
 ```
 
-防双重计数：
-
-- 相机射线直接看到灯 → 返回 `emitted`
-- 间接路径撞灯 → `emitted = 0`（直接光已由 NEE 计入）
-
-公式（朗伯）：
+## MIS
 
 \[
-L_{\text{direct}} = \frac{\rho}{\pi}\, L_e\, \frac{\cos\theta_s}{\mathrm{pdf}_\omega},\quad
-\mathrm{pdf}_\omega = \frac{1}{N\cdot A}\cdot\frac{r^2}{\cos\theta_L}
+w(p,q)=\frac{p^2}{p^2+q^2}
 \]
 
-## 3. BVH
+- 灯策略贡献 × \(w(\mathrm{pdf}_L,\mathrm{pdf}_f)\)
+- BSDF 撞灯 × \(w(\mathrm{pdf}_f,\mathrm{pdf}_L)\)
 
-盒子剪枝：miss AABB → 整棵子树跳过。场景 4 多球可开关对比。
+## 俄罗斯轮盘
 
-## 4. 场景 id
+bounce ≥ 3：\(p=\mathrm{clamp}(\max(\rho),0.05,0.95)\)；死亡则停，存活则 \(\rho/=p\)。
 
-| id | 内容 |
-|----|------|
-| 0–2 | 户外/金属教学 |
-| 3 | 康奈尔箱 + 面光（NEE 主战场） |
-| 4 | 多球 BVH 测试 |
+## SAH-BVH
 
-## 5. 源码索引
+代价：\(C = C_\mathrm{trav} + (A_L N_L + A_R N_R)/A_\mathrm{parent}\)
 
-| 文件 | 职责 |
+12 桶扫描三轴，取最小代价划分。
+
+## 开关
+
+| 标志 | 作用 |
 |------|------|
-| `camera.h` | 路径追踪 + NEE |
-| `quad.h` | 面采样 / 面积 |
-| `bvh.h` | 加速结构 |
-| `scenes.h` | 场景与 lights 列表 |
+| BVH | SAH 树 / 暴力列表 |
+| NEE | 面光直接采样 |
+| MIS | 平衡启发 |
+| RR | 路径截断 |

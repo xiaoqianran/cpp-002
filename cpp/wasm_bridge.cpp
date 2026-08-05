@@ -42,6 +42,12 @@ EMSCRIPTEN_KEEPALIVE
 void rt_set_use_nee(int enabled) { g_rt.set_use_nee(enabled); }
 
 EMSCRIPTEN_KEEPALIVE
+void rt_set_use_mis(int enabled) { g_rt.set_use_mis(enabled); }
+
+EMSCRIPTEN_KEEPALIVE
+void rt_set_use_rr(int enabled) { g_rt.set_use_rr(enabled); }
+
+EMSCRIPTEN_KEEPALIVE
 void rt_reset() { g_rt.reset_accum(); }
 
 EMSCRIPTEN_KEEPALIVE
@@ -67,6 +73,12 @@ int rt_use_bvh() { return g_rt.get_use_bvh(); }
 
 EMSCRIPTEN_KEEPALIVE
 int rt_use_nee() { return g_rt.get_use_nee(); }
+
+EMSCRIPTEN_KEEPALIVE
+int rt_use_mis() { return g_rt.get_use_mis(); }
+
+EMSCRIPTEN_KEEPALIVE
+int rt_use_rr() { return g_rt.get_use_rr(); }
 
 EMSCRIPTEN_KEEPALIVE
 int rt_primitive_count() { return g_rt.get_primitive_count(); }

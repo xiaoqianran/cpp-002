@@ -1,4 +1,4 @@
-// 相机 + 路径追踪 + 可选 NEE（下一事件估计 / 面光重要性采样）
+// 相机 + 路径追踪 + NEE + MIS + 俄罗斯轮盘
 #pragma once
 
 #include "color.h"
@@ -9,14 +9,15 @@
 #include "vec3.h"
 #include <vector>
 
-// debug_mode: 0 美观 / 1 法线 / 2 深度 / 3 发光体
 class camera {
 public:
   double aspect_ratio = 16.0 / 9.0;
   int image_width = 400;
   int max_depth = 50;
   int debug_mode = 0;
-  bool use_nee = true; // 面光直接采样，显著降低室内噪点
+  bool use_nee = true;
+  bool use_mis = true;
+  bool use_rr = true;
   color background = color(0.70, 0.80, 1.00);
 
   double vfov = 20;
@@ -27,7 +28,6 @@ public:
   double defocus_angle = 0;
   double focus_dist = 10;
 
-  // 场景面光源（由 renderer 注入）
   const std::vector<shared_ptr<quad>> *lights = nullptr;
 
   void initialize(int width, int height) {
@@ -63,7 +63,7 @@ public:
   }
 
   color ray_color(const ray &r, int depth, const hittable &world) const {
-    return ray_color_impl(r, depth, world, /*is_camera_ray=*/true);
+    return ray_color_impl(r, depth, world, true, 0, -1.0, false);
   }
 
   ray get_ray(int i, int j) const {
@@ -88,8 +88,14 @@ private:
   vec3 defocus_disk_u;
   vec3 defocus_disk_v;
 
-  color ray_color_impl(const ray &r, int depth, const hittable &world,
-                       bool is_camera_ray) const {
+  static double mis_weight(double pdf_a, double pdf_b) {
+    double a2 = pdf_a * pdf_a;
+    double b2 = pdf_b * pdf_b;
+    return a2 / (a2 + b2 + 1e-12);
+  }
+
+  color ray_color_impl(const ray &r, int depth, const hittable &world, bool is_camera_ray,
+                       int bounce, double prev_bsdf_pdf, bool prev_lambert) const {
     if (depth <= 0) return color(0, 0, 0);
 
     hit_record rec;
@@ -109,37 +115,75 @@ private:
     color emit = rec.mat->emitted(rec);
     const bool hit_light = emit.length_squared() > 0;
 
-    // NEE 开启时：间接路径撞上灯不再加 emit（避免与直接采样重复计数）
-    // 相机射线直接看到灯仍返回 emit
     if (hit_light) {
-      if (!use_nee || is_camera_ray) return emit;
+      if (is_camera_ray || !use_nee) return emit;
+
+      if (use_mis && prev_lambert && prev_bsdf_pdf > 0) {
+        double pdf_l = pdf_light_direction(r.origin(), unit_vector(r.direction()), rec);
+        if (pdf_l <= 0) return color(0, 0, 0);
+        return emit * mis_weight(prev_bsdf_pdf, pdf_l);
+      }
       return color(0, 0, 0);
     }
 
     ray scattered;
     color attenuation;
     if (!rec.mat->scatter(r, rec, attenuation, scattered))
-      return emit; // 非灯且不散射
+      return color(0, 0, 0);
 
     color L(0, 0, 0);
 
-    // —— 下一事件估计：只对朗伯表面采样面光 ——
-    if (use_nee && rec.mat->is_lambertian() && lights && !lights->empty()) {
+    const bool lambert = rec.mat->is_lambertian();
+    double bsdf_pdf = lambert ? rec.mat->scattering_pdf(r, rec, scattered) : -1.0;
+
+    if (use_nee && lambert && lights && !lights->empty()) {
       L += sample_direct_light(rec, world);
     }
 
-    // —— 间接：继续随机散射 ——
-    L += attenuation * ray_color_impl(scattered, depth - 1, world, /*is_camera_ray=*/false);
+    if (use_rr && bounce >= 3) {
+      double p = std::fmax(attenuation.x(), std::fmax(attenuation.y(), attenuation.z()));
+      p = clamp(p, 0.05, 0.95);
+      if (random_double() > p) return L;
+      attenuation = attenuation / p;
+    }
+
+    L += attenuation * ray_color_impl(scattered, depth - 1, world, false, bounce + 1, bsdf_pdf,
+                                      lambert);
     return L;
   }
 
-  // 面光源均匀采样 → 立体角 pdf → 朗伯 BRDF 直接光
+  double pdf_light_direction(const point3 &origin, const vec3 &unit_dir,
+                             const hit_record &lrec) const {
+    if (!lights || lights->empty()) return 0;
+    const auto &list = *lights;
+    double dist2 = (lrec.p - origin).length_squared();
+    double cos_l = std::fabs(dot(lrec.normal, unit_dir));
+    if (cos_l < 1e-8) return 0;
+
+    // 选法线对齐且中心最近的灯
+    double best_area = 0;
+    double best_score = infinity;
+    for (const auto &lg : list) {
+      double align = std::fabs(dot(lg->outward_normal(), lrec.normal));
+      if (align < 0.9) continue;
+      double d = (lg->centroid() - lrec.p).length_squared();
+      if (d < best_score) {
+        best_score = d;
+        best_area = lg->surface_area();
+      }
+    }
+    if (best_area <= 0) best_area = list[0]->surface_area();
+    if (best_area <= 0) return 0;
+
+    double n = static_cast<double>(list.size());
+    return (1.0 / (n * best_area)) * dist2 / cos_l;
+  }
+
   color sample_direct_light(const hit_record &rec, const hittable &world) const {
     const auto &list = *lights;
     const size_t n = list.size();
     if (n == 0) return color(0, 0, 0);
 
-    // 均匀选一盏灯
     auto light = list[static_cast<size_t>(random_int(0, static_cast<int>(n) - 1))];
     point3 on_light = light->sample_point();
     vec3 to_light = on_light - rec.p;
@@ -152,34 +196,34 @@ private:
     double cos_surf = dot(rec.normal, wi);
     if (cos_surf <= 0) return color(0, 0, 0);
 
-    // 灯的朝向：光从法线一侧发出；射线射向灯时 cos_light = -N_light · wi
     double cos_light = -dot(light->outward_normal(), wi);
     if (cos_light <= 0) return color(0, 0, 0);
 
-    // 阴影射线：途中有遮挡则无贡献
     hit_record shadow_rec;
     if (world.hit(ray(rec.p, wi), interval(0.001, dist - 1e-4), shadow_rec))
       return color(0, 0, 0);
 
-    // 面积 pdf：1/(N * area)，转立体角 pdf = area_pdf * dist² / cos_light
     double area = light->surface_area();
     if (area <= 0) return color(0, 0, 0);
     double pdf_area = 1.0 / (static_cast<double>(n) * area);
     double pdf_solid = pdf_area * dist2 / cos_light;
     if (pdf_solid <= 1e-12) return color(0, 0, 0);
 
-    color Le = light->material_ptr()->emitted(shadow_rec);
-    // 若 emitted 需要 rec，构造一个假的：对 diffuse_light 不依赖 rec
     hit_record light_rec;
     light_rec.p = on_light;
     light_rec.normal = light->outward_normal();
     light_rec.front_face = true;
     light_rec.mat = light->material_ptr();
-    Le = light->material_ptr()->emitted(light_rec);
+    color Le = light->material_ptr()->emitted(light_rec);
 
-    // L = f * Le * cos / pdf_ω ，f = albedo/π
     color f = rec.mat->brdf_lambert(rec);
-    return f * Le * (cos_surf / pdf_solid);
+    color contrib = f * Le * (cos_surf / pdf_solid);
+
+    if (use_mis) {
+      double pdf_bsdf = cos_surf / pi;
+      contrib = contrib * mis_weight(pdf_solid, pdf_bsdf);
+    }
+    return contrib;
   }
 
   vec3 sample_square() const {

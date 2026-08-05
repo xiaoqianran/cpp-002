@@ -1,4 +1,4 @@
-// 渐进式渲染器：BVH + NEE
+// 渐进式渲染器：BVH(SAH) + NEE + MIS + RR
 #pragma once
 
 #include "bvh.h"
@@ -59,6 +59,16 @@ public:
     reset_accum();
   }
 
+  void set_use_mis(int enabled) {
+    cam.use_mis = enabled != 0;
+    reset_accum();
+  }
+
+  void set_use_rr(int enabled) {
+    cam.use_rr = enabled != 0;
+    reset_accum();
+  }
+
   void set_scene(int id) {
     scene_id = id;
     rebuild_world();
@@ -100,6 +110,8 @@ public:
   int get_debug_mode() const { return cam.debug_mode; }
   int get_use_bvh() const { return use_bvh ? 1 : 0; }
   int get_use_nee() const { return cam.use_nee ? 1 : 0; }
+  int get_use_mis() const { return cam.use_mis ? 1 : 0; }
+  int get_use_rr() const { return cam.use_rr ? 1 : 0; }
   int get_primitive_count() const { return primitive_count; }
   int get_light_count() const { return static_cast<int>(lights.size()); }
   unsigned char *get_rgba() { return rgba.data(); }
@@ -165,6 +177,8 @@ private:
       cam.background = color(0, 0, 0);
       cam.max_depth = 50;
       cam.use_nee = true;
+      cam.use_mis = true;
+      cam.use_rr = true;
     } else if (scene_id == 4) {
       cam.lookfrom = point3(13, 2, 3);
       cam.lookat = point3(0, 0, 0);
