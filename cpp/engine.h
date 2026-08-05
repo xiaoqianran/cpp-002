@@ -1,4 +1,4 @@
-// 引擎：Camera + PathTracer + Film + Scene
+// 引擎：编排 Camera + PathTracer + Film + Scene
 #pragma once
 
 #include "bvh.h"
@@ -12,15 +12,16 @@
 
 class engine {
 public:
-  void set(const EngineConfig &cfg) {
-    const bool same_scene = (cfg.scene_id == config.scene_id && scene_root);
-    const bool same_size =
-        (cfg.width == config.width && cfg.height == config.height && !rgba.empty());
-    const bool bvh_changed = (cfg.flags.bvh != config.flags.bvh);
+  /** 一次应用完整配置（推荐入口） */
+  void apply(const EngineConfig &cfg) {
+    const bool size_changed =
+        cfg.width != config.width || cfg.height != config.height || accum.empty();
+    const bool scene_changed = cfg.scene_id != config.scene_id || !scene_root;
+    const bool bvh_changed = cfg.flags.bvh != config.flags.bvh;
 
     config = cfg;
-    if (!same_size) ensure_buffers();
-    if (!same_scene || bvh_changed || !scene_root) rebuild_world();
+    if (size_changed) ensure_buffers();
+    if (scene_changed || bvh_changed) rebuild_world();
 
     cam.set_pose(cfg.pose);
     cam.initialize(cfg.width, cfg.height);
@@ -30,23 +31,7 @@ public:
     reset_accum();
   }
 
-  /** mode: 0=完整 set  1=仅相机姿态 */
-  void apply_packed(const double *p, int n, int mode) {
-    if (mode == 1 && n >= kConfigPackSize && !rgba.empty()) {
-      config.pose.lookfrom = point3(p[9], p[10], p[11]);
-      config.pose.lookat = point3(p[12], p[13], p[14]);
-      config.pose.vfov = p[15];
-      config.pose.defocus_angle = p[16];
-      config.pose.focus_dist = p[17];
-      cam.set_pose(config.pose);
-      cam.initialize(config.width, config.height);
-      reset_accum();
-      return;
-    }
-    set(unpack_config(p, n));
-  }
-
-  void set_pose(const CameraPose &pose) {
+  void apply_pose(const CameraPose &pose) {
     config.pose = pose;
     cam.set_pose(pose);
     cam.initialize(config.width, config.height);
@@ -54,19 +39,20 @@ public:
   }
 
   void reset_accum() {
-    std::fill(accum.begin(), accum.end(), 0.0);
+    if (!accum.empty()) std::fill(accum.begin(), accum.end(), 0.0);
     samples_done = 0;
   }
 
   void render_pass(int spp) {
-    if (config.width <= 0 || config.height <= 0 || !scene_root || rgba.empty()) return;
+    if (config.width <= 0 || config.height <= 0 || !scene_root || accum.empty()) return;
     if (spp < 1) spp = 1;
 
     for (int j = 0; j < config.height; ++j) {
       for (int i = 0; i < config.width; ++i) {
         color pixel(0, 0, 0);
         for (int s = 0; s < spp; ++s) {
-          pixel += tracer.trace(cam.get_ray(i, j), *scene_root);
+          ray r = cam.get_ray(i, j);
+          pixel += tracer.trace(r, *scene_root);
         }
         const size_t idx = static_cast<size_t>((j * config.width + i) * 3);
         accum[idx + 0] += pixel.x();
@@ -83,67 +69,59 @@ public:
     config.height = h;
     config.scene_id = scene_id;
     config.background = scene_background(scene_id);
-    ensure_buffers();
-    rebuild_world();
-    cam.set_pose(config.pose);
-    cam.initialize(w, h);
-    tracer.set_flags(config.flags);
-    tracer.background = config.background;
-    tracer.lights = &lights;
-    reset_accum();
+    apply(config);
   }
 
   void set_camera(double lx, double ly, double lz, double ax, double ay, double az, double vfov,
                   double defocus, double focus) {
-    config.pose.lookfrom = point3(lx, ly, lz);
-    config.pose.lookat = point3(ax, ay, az);
-    config.pose.vfov = vfov;
-    config.pose.defocus_angle = defocus;
-    config.pose.focus_dist = focus;
-    set_pose(config.pose);
+    CameraPose p = config.pose;
+    p.lookfrom = point3(lx, ly, lz);
+    p.lookat = point3(ax, ay, az);
+    p.vfov = vfov;
+    p.defocus_angle = defocus;
+    p.focus_dist = focus;
+    apply_pose(p);
   }
 
   void set_max_depth(int d) {
     config.flags.max_depth = d < 1 ? 1 : d;
-    tracer.set_flags(config.flags);
-    reset_accum();
+    apply(config);
   }
+
   void set_debug_mode(int mode) {
     config.flags.debug_mode = mode < 0 ? 0 : mode;
-    tracer.set_flags(config.flags);
-    reset_accum();
+    apply(config);
   }
+
   void set_use_bvh(int enabled) {
     config.flags.bvh = enabled != 0;
-    rebuild_world();
-    reset_accum();
+    apply(config);
   }
+
   void set_use_nee(int enabled) {
     config.flags.nee = enabled != 0;
-    tracer.set_flags(config.flags);
-    reset_accum();
+    apply(config);
   }
+
   void set_use_mis(int enabled) {
     config.flags.mis = enabled != 0;
-    tracer.set_flags(config.flags);
-    reset_accum();
+    apply(config);
   }
+
   void set_use_rr(int enabled) {
     config.flags.rr = enabled != 0;
-    tracer.set_flags(config.flags);
-    reset_accum();
+    apply(config);
   }
+
   void set_scene(int id) {
     config.scene_id = id;
     config.background = scene_background(id);
-    tracer.background = config.background;
-    rebuild_world();
-    reset_accum();
+    apply(config);
   }
+
   void set_background_rgb(double r, double g, double b) {
     config.background = color(r, g, b);
-    tracer.background = config.background;
-    reset_accum();
+    apply(config);
   }
 
   int get_width() const { return config.width; }
@@ -159,9 +137,10 @@ public:
   int get_light_count() const { return static_cast<int>(lights.size()); }
   unsigned char *get_rgba() { return rgba.data(); }
   size_t rgba_bytes() const { return rgba.size(); }
+  const EngineConfig &get_config() const { return config; }
 
 private:
-  EngineConfig config;
+  EngineConfig config{};
   camera cam;
   path_tracer tracer;
   hittable_list raw_world;
@@ -173,7 +152,7 @@ private:
   int primitive_count = 0;
 
   void ensure_buffers() {
-    const size_t n = static_cast<size_t>(config.width * config.height);
+    const size_t n = static_cast<size_t>(std::max(1, config.width) * std::max(1, config.height));
     accum.assign(n * 3, 0.0);
     rgba.assign(n * 4, 0);
   }
@@ -182,10 +161,11 @@ private:
     build_scene(config.scene_id, raw_world, lights);
     primitive_count = static_cast<int>(raw_world.objects.size());
     tracer.lights = &lights;
-    if (config.flags.bvh && primitive_count > 0)
+    if (config.flags.bvh && primitive_count > 0) {
       scene_root = make_shared<bvh_node>(raw_world);
-    else
+    } else {
       scene_root = make_shared<hittable_list>(raw_world);
+    }
   }
 
   void bake_rgba() {

@@ -1,4 +1,4 @@
-// CLI：engine + path_tracer
+// CLI：engine
 // 用法: ./raytracer_cli [width] [height] [samples] [scene]
 #include "engine.h"
 
@@ -39,9 +39,7 @@ int main(int argc, char **argv) {
   }
 
   engine eng;
-  eng.set(cfg);
-
-  // 渐进输出：一次 render 多 spp
+  eng.apply(cfg);
   eng.render_pass(samples);
 
   std::cout << "P3\n" << width << ' ' << height << "\n255\n";

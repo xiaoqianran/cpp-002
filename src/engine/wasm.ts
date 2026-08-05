@@ -1,11 +1,12 @@
 /**
- * WASM 适配：主路径 applyConfigPacked
+ * WASM 适配：只暴露 apply / applyPose / render / 读缓冲
  */
 
-import { CONFIG_PACK_SIZE } from "./pack";
-
 export type RayTracerApi = {
-  applyConfigPacked: (packed: Float64Array, mode: 0 | 1) => void;
+  /** 一次写入完整配置 */
+  apply: (args: ApplyArgs) => void;
+  /** 仅相机姿态 */
+  applyPose: (args: PoseArgs) => void;
   reset: () => void;
   renderPass: (spp: number) => void;
   samples: () => number;
@@ -16,6 +17,40 @@ export type RayTracerApi = {
   rgba: () => Uint8ClampedArray;
 };
 
+export type ApplyArgs = {
+  width: number;
+  height: number;
+  sceneId: number;
+  maxDepth: number;
+  debugMode: number;
+  bvh: boolean;
+  nee: boolean;
+  mis: boolean;
+  rr: boolean;
+  lx: number;
+  ly: number;
+  lz: number;
+  ax: number;
+  ay: number;
+  az: number;
+  vfov: number;
+  defocus: number;
+  focus: number;
+  bg: [number, number, number];
+};
+
+export type PoseArgs = {
+  lx: number;
+  ly: number;
+  lz: number;
+  ax: number;
+  ay: number;
+  az: number;
+  vfov: number;
+  defocus: number;
+  focus: number;
+};
+
 type EmscriptenModule = {
   ccall: (
     name: string,
@@ -24,8 +59,6 @@ type EmscriptenModule = {
     args: unknown[],
   ) => unknown;
   HEAPU8: Uint8Array;
-  _malloc: (n: number) => number;
-  _free: (p: number) => void;
   _rt_rgba_ptr: () => number;
   _rt_rgba_bytes: () => number;
 };
@@ -49,6 +82,7 @@ let loaderPromise: Promise<void> | null = null;
 function loadScript(src: string): Promise<void> {
   if (typeof window.createRayTracerModule === "function") return Promise.resolve();
   if (loaderPromise) return loaderPromise;
+
   loaderPromise = new Promise((resolve, reject) => {
     const s = document.createElement("script");
     s.src = src;
@@ -90,29 +124,73 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     (...a: Parameters<T>): ReturnType<T> =>
       mod.ccall(name, ret, args, a as unknown[]) as ReturnType<T>;
 
-  const applyRaw = wrap<(ptr: number, n: number, mode: number) => void>(
-    "rt_apply_config",
-    null,
-    ["number", "number", "number"],
-  );
+  const applyRaw = wrap<
+    (
+      w: number,
+      h: number,
+      scene: number,
+      depth: number,
+      debug: number,
+      bvh: number,
+      nee: number,
+      mis: number,
+      rr: number,
+      lx: number,
+      ly: number,
+      lz: number,
+      ax: number,
+      ay: number,
+      az: number,
+      vfov: number,
+      defocus: number,
+      focus: number,
+      bgr: number,
+      bgg: number,
+      bgb: number,
+    ) => void
+  >("rt_apply", null, Array(21).fill("number") as string[]);
+
+  const applyPoseRaw = wrap<
+    (
+      lx: number,
+      ly: number,
+      lz: number,
+      ax: number,
+      ay: number,
+      az: number,
+      vfov: number,
+      defocus: number,
+      focus: number,
+    ) => void
+  >("rt_apply_pose", null, Array(9).fill("number") as string[]);
 
   return {
-    applyConfigPacked: (packed: Float64Array, mode: 0 | 1) => {
-      if (packed.length < CONFIG_PACK_SIZE) {
-        throw new Error(`config pack 长度 ${packed.length} < ${CONFIG_PACK_SIZE}`);
-      }
-      const nbytes = CONFIG_PACK_SIZE * 8;
-      const ptr = mod._malloc(nbytes);
-      if (!ptr) throw new Error("WASM malloc 失败");
-      try {
-        // 经 HEAPU8 写入，避免 HEAPF64 视图对齐/过期问题
-        const bytes = new Uint8Array(packed.buffer, packed.byteOffset, nbytes);
-        mod.HEAPU8.set(bytes, ptr);
-        applyRaw(ptr, CONFIG_PACK_SIZE, mode);
-      } finally {
-        mod._free(ptr);
-      }
-    },
+    apply: (a) =>
+      applyRaw(
+        a.width,
+        a.height,
+        a.sceneId,
+        a.maxDepth,
+        a.debugMode,
+        a.bvh ? 1 : 0,
+        a.nee ? 1 : 0,
+        a.mis ? 1 : 0,
+        a.rr ? 1 : 0,
+        a.lx,
+        a.ly,
+        a.lz,
+        a.ax,
+        a.ay,
+        a.az,
+        a.vfov,
+        a.defocus,
+        a.focus,
+        a.bg[0],
+        a.bg[1],
+        a.bg[2],
+      ),
+    applyPose: (a) =>
+      applyPoseRaw(a.lx, a.ly, a.lz, a.ax, a.ay, a.az, a.vfov, a.defocus, a.focus),
     reset: wrap<() => void>("rt_reset", null, []),
     renderPass: wrap<(spp: number) => void>("rt_render_pass", null, ["number"]),
     samples: wrap<() => number>("rt_samples", "number", []),
@@ -123,8 +201,6 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     rgba: () => {
       const ptr = mod._rt_rgba_ptr();
       const bytes = mod._rt_rgba_bytes();
-      if (bytes <= 0) return new Uint8ClampedArray(0);
-      // 内存增长后需从当前 buffer 切片
       return new Uint8ClampedArray(mod.HEAPU8.buffer, ptr, bytes);
     },
   };

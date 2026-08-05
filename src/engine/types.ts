@@ -1,4 +1,4 @@
-/** 前端唯一配置源 — C++ 只是这份配置的投影 */
+/** 前端唯一配置源 — 与 C++ EngineConfig 字段对齐 */
 
 export type SceneId = 0 | 1 | 2 | 3 | 4;
 export type DebugMode = 0 | 1 | 2 | 3;
@@ -18,9 +18,10 @@ export type EngineConfig = {
   yaw: number;
   pitch: number;
   radius: number;
+  /** 线性背景 RGB */
+  background: [number, number, number];
 };
 
-/** 课程「打开本课实验」只打补丁 */
 export type ConfigPatch = Partial<EngineConfig> & { label?: string };
 
 export const SCENES: { id: SceneId; name: string; desc: string }[] = [
@@ -47,24 +48,31 @@ export const RES_PRESETS = [
 export const ORBIT_YAW_SENS = 0.005;
 export const ORBIT_PITCH_SENS = 0.004;
 
-/** 场景默认（仅前端一份，不再在 C++ 里抢控制权） */
+export function sceneBackground(sceneId: SceneId): [number, number, number] {
+  if (sceneId === 3) return [0, 0, 0];
+  if (sceneId === 2) return [0.15, 0.16, 0.2];
+  if (sceneId === 1) return [0.55, 0.65, 0.85];
+  return [0.7, 0.8, 1.0];
+}
+
 export function sceneDefaults(sceneId: SceneId): Pick<
   EngineConfig,
-  "yaw" | "pitch" | "radius" | "vfov" | "defocus" | "maxDepth"
+  "yaw" | "pitch" | "radius" | "vfov" | "defocus" | "maxDepth" | "background"
 > {
+  const background = sceneBackground(sceneId);
   if (sceneId === 4) {
-    return { yaw: 0.25, pitch: 0.12, radius: 13, vfov: 20, defocus: 0.6, maxDepth: 12 };
+    return { yaw: 0.25, pitch: 0.12, radius: 13, vfov: 20, defocus: 0.6, maxDepth: 12, background };
   }
   if (sceneId === 3) {
-    return { yaw: 0, pitch: 0.02, radius: 3.2, vfov: 40, defocus: 0, maxDepth: 50 };
+    return { yaw: 0, pitch: 0.02, radius: 3.2, vfov: 40, defocus: 0, maxDepth: 50, background };
   }
   if (sceneId === 1) {
-    return { yaw: 0.2, pitch: 0.12, radius: 4.5, vfov: 35, defocus: 0.4, maxDepth: 40 };
+    return { yaw: 0.2, pitch: 0.12, radius: 4.5, vfov: 35, defocus: 0.4, maxDepth: 40, background };
   }
   if (sceneId === 2) {
-    return { yaw: 0, pitch: 0.2, radius: 7, vfov: 28, defocus: 0, maxDepth: 30 };
+    return { yaw: 0, pitch: 0.2, radius: 7, vfov: 28, defocus: 0, maxDepth: 30, background };
   }
-  return { yaw: 0.35, pitch: 0.18, radius: 6.2, vfov: 30, defocus: 0.25, maxDepth: 24 };
+  return { yaw: 0.35, pitch: 0.18, radius: 6.2, vfov: 30, defocus: 0.25, maxDepth: 24, background };
 }
 
 export function defaultConfig(): EngineConfig {
@@ -86,7 +94,6 @@ export function selectScene(cfg: EngineConfig, sceneId: SceneId): EngineConfig {
   return { ...cfg, sceneId, ...sceneDefaults(sceneId) };
 }
 
-/** 课程 action → Config 补丁（兼容旧字段名） */
 export function lessonToPatch(a: {
   sceneId?: SceneId;
   debugMode?: DebugMode;

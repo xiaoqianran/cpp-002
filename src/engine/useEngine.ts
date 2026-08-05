@@ -19,6 +19,7 @@ export type EngineSnapshot = {
   lightCount: number;
 };
 
+/** 持有 WASM；Config 唯一投影点 */
 export function useEngine(cfg: EngineConfig, running: boolean) {
   const apiRef = useRef<RayTracerApi | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -70,7 +71,7 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
         apiRef.current = api;
         applyConfig(api, cfgRef.current);
         if (api.width() <= 0 || api.rgba().length === 0) {
-          throw new Error("applyConfig 后缓冲区为空，请检查 rt_apply_config");
+          throw new Error("引擎缓冲未就绪（rt_apply）");
         }
         prevCfgRef.current = { ...cfgRef.current };
         setSnap((s) => ({ ...s, status: "ready", error: null }));

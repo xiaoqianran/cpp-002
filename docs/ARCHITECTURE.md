@@ -1,48 +1,47 @@
-# 架构
+# 架构（三刀完成后）
 
-## 分层
+## 一句话
 
-```text
-src/
-  engine/   types · pack · wasm · applyConfig · useEngine
-  lab/      Viewport · Controls
-  App.tsx   壳
-
-cpp/
-  config.h camera.h path_tracer.h engine.h   # 核心 API
-  math/     vec3 ray interval aabb onb color
-  geo/      hittable sphere quad bvh
-  mat/      material
-  scene/    scenes
-  api/      wasm_bridge · main_cli
-```
+**前端一份 `EngineConfig` → `rt_apply` / `rt_apply_pose` → C++ `engine`。**
 
 ```mermaid
 flowchart LR
-  Cfg["EngineConfig"] --> Pack["pack 21 doubles"]
-  Pack --> WASM["rt_apply_config mode 0|1"]
-  WASM --> Eng["engine"]
-  Eng --> Cam["camera"]
-  Eng --> PT["path_tracer"]
-  Eng --> Film
+  UI[lab / course] --> Cfg[EngineConfig]
+  Cfg --> Hook[useEngine]
+  Hook -->|rt_apply| E[engine]
+  Hook -->|rt_apply_pose| E
+  E --> Cam[camera]
+  E --> PT[path_tracer]
+  E --> Film[accum]
+  E --> Sc[scene+bvh]
 ```
 
-## 配置打包（前后端同布局）
+## 前端
 
-| 下标 | 含义 |
+| 路径 | 职责 |
 |------|------|
-| 0–2 | width height scene |
-| 3–8 | depth debug bvh nee mis rr |
-| 9–14 | lookfrom lookat |
-| 15–17 | vfov defocus focus |
-| 18–20 | background rgb |
+| `engine/types.ts` | Config 唯一源 |
+| `engine/applyConfig.ts` | Config → WASM 参数 |
+| `engine/useEngine.ts` | 生命周期 + rAF |
+| `engine/wasm.ts` | 只认 apply / applyPose |
+| `lab/*` | 实验台 UI |
+| `App.tsx` | 壳 |
 
-- `mode=0`：完整 `engine.set`
-- `mode=1`：仅姿态（拖拽）
+## C++
 
-## 原则
+| 文件 | 职责 |
+|------|------|
+| `config.h` | POD 配置 |
+| `camera.h` | 射线 |
+| `path_tracer.h` | 积分 |
+| `engine.h` | 编排 |
+| `wasm_bridge.cpp` | `rt_apply` 主入口 |
 
-1. 前端只持有 `EngineConfig`
-2. 一次 `applyConfigPacked` 投影到 C++
-3. camera ≠ integrator
-4. 旧 `rt_set_*` 仍导出，主路径不再使用
+详见 [`cpp/README.md`](../cpp/README.md)。
+
+## 同步策略
+
+| 变化 | 调用 |
+|------|------|
+| 场景 / 分辨率 / 开关 / 深度 / 调试 / 背景 | `rt_apply` |
+| 仅轨道 / FOV / 光圈 | `rt_apply_pose` |
