@@ -18,9 +18,13 @@ import {
   RotateCcw,
   Sparkles,
   Boxes,
+  GraduationCap,
+  FlaskConical,
 } from "lucide-react";
 import { createRayTracer, type RayTracerApi } from "./lib/raytracer";
 import { LearningPanel } from "./components/LearningPanel";
+import { Curriculum } from "./components/Curriculum";
+import type { LessonAction } from "./curriculum/types";
 
 type SceneId = 0 | 1 | 2 | 3 | 4;
 
@@ -110,6 +114,7 @@ export default function App() {
   const [pitch, setPitch] = useState(defaults.pitch);
   const [radius, setRadius] = useState(defaults.radius);
   const [showLearn, setShowLearn] = useState(true);
+  const [viewMode, setViewMode] = useState<"lab" | "course">("lab");
   const [passMs, setPassMs] = useState(0);
 
   const target = useMemo<[number, number, number]>(
@@ -155,6 +160,29 @@ export default function App() {
     setVfov(d.vfov);
     setDefocus(d.defocus);
     setMaxDepth(d.maxDepth);
+  };
+
+
+  const applyLesson = (a: LessonAction) => {
+    if (a.sceneId !== undefined) {
+      const id = a.sceneId;
+      setSceneId(id);
+      const d = sceneCameraDefaults(id);
+      setYaw(d.yaw);
+      setPitch(d.pitch);
+      setRadius(d.radius);
+      setVfov(d.vfov);
+      setDefocus(d.defocus);
+      if (a.maxDepth === undefined) setMaxDepth(d.maxDepth);
+    }
+    if (a.debugMode !== undefined) setDebugMode(a.debugMode);
+    if (a.useNee !== undefined) setUseNee(a.useNee);
+    if (a.useMis !== undefined) setUseMis(a.useMis);
+    if (a.useBvh !== undefined) setUseBvh(a.useBvh);
+    if (a.useRr !== undefined) setUseRr(a.useRr);
+    if (a.maxDepth !== undefined) setMaxDepth(a.maxDepth);
+    setViewMode("lab");
+    setRunning(true);
   };
 
   const reinit = useCallback(async () => {
@@ -273,17 +301,39 @@ export default function App() {
             </p>
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">光线追踪学习器</h1>
             <p className="max-w-xl text-sm text-fg-muted md:text-base">
-              SAH-BVH + NEE + MIS + 俄罗斯轮盘。康奈尔箱默认全开。拖拽环绕相机。
+              教学路径追踪器：完整课程（GAMES101/Shirley 对照）+ 可开关 NEE·MIS·BVH 实验台。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <div className="inline-flex h-11 items-center rounded-[var(--radius-md)] border border-border bg-bg-elevated p-1">
+              <button
+                type="button"
+                onClick={() => setViewMode("lab")}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-sm)] px-3 text-xs font-medium transition ${
+                  viewMode === "lab" ? "bg-bg-subtle text-fg" : "text-fg-muted"
+                }`}
+              >
+                <FlaskConical className="size-3.5" />
+                实验台
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("course")}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-sm)] px-3 text-xs font-medium transition ${
+                  viewMode === "course" ? "bg-bg-subtle text-fg" : "text-fg-muted"
+                }`}
+              >
+                <GraduationCap className="size-3.5" />
+                完整课程
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => setShowLearn((v) => !v)}
               className="inline-flex h-11 items-center gap-2 rounded-[var(--radius-md)] border border-border bg-bg-elevated px-4 text-sm font-medium text-fg transition hover:border-border-strong"
             >
               <BookOpen className="size-4" />
-              {showLearn ? "隐藏讲解" : "显示讲解"}
+              {showLearn ? "隐藏摘要" : "显示摘要"}
             </button>
             <button
               type="button"
@@ -297,6 +347,11 @@ export default function App() {
           </div>
         </header>
 
+        {viewMode === "course" ? (
+          <div className="flex min-h-[70dvh] flex-col">
+            <Curriculum onApply={applyLesson} onClose={() => setViewMode("lab")} />
+          </div>
+        ) : (
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
           <section className="space-y-3">
             <div
@@ -356,7 +411,7 @@ export default function App() {
 
             {showLearn && (
               <div className="lg:hidden">
-                <LearningPanel />
+                <LearningPanel onOpenCourse={() => setViewMode("course")} />
               </div>
             )}
           </section>
@@ -535,15 +590,19 @@ export default function App() {
 
             {showLearn && (
               <div className="hidden lg:block">
-                <LearningPanel compact />
+                <LearningPanel onOpenCourse={() => setViewMode("course")} />
               </div>
             )}
           </aside>
         </div>
+        )}
 
-        {showLearn && (
-          <div className="hidden lg:block">
-            <LearningPanel full />
+        {viewMode === "lab" && showLearn && (
+          <div className="rounded-[var(--radius-xl)] border border-border bg-bg-elevated p-4 text-sm text-fg-muted">
+            <p className="font-medium text-fg">学习路径建议</p>
+            <p className="mt-1 text-xs leading-relaxed">
+              按「完整课程」从第 0 章读起；每课可一键跳转实验台。对照 GAMES101 光线追踪章节与 Shirley 三部曲，在开关 NEE/MIS/BVH 时观察方差与耗时。
+            </p>
           </div>
         )}
       </div>

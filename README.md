@@ -8,6 +8,16 @@
 
 ---
 
+## 完整课程（教学核心）
+
+顶部切换 **「完整课程」**：10 章中文精读，对照 GAMES101 / Shirley / PBRT。
+
+- 公式 · Mermaid 图 · 源码地图 · 自测题  
+- **打开本课实验** 一键同步场景与 NEE/MIS/BVH  
+- 进度保存在浏览器 localStorage  
+
+大纲见 [docs/COURSE.md](./docs/COURSE.md)。
+
 ## 你能看到什么
 
 - 三种散射材质：漫反射 / 金属 / 玻璃  
