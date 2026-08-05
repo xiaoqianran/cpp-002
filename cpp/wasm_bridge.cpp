@@ -1,10 +1,10 @@
-// WASM 桥接
-#include "renderer.h"
+// WASM 桥接 → engine（细粒度 API 保留，内部统一）
+#include "engine.h"
 
 #include <cstdlib>
 #include <emscripten.h>
 
-static renderer g_rt;
+static engine g_rt;
 
 extern "C" {
 
@@ -30,7 +30,7 @@ EMSCRIPTEN_KEEPALIVE
 void rt_set_max_depth(int depth) { g_rt.set_max_depth(depth); }
 
 EMSCRIPTEN_KEEPALIVE
-void rt_set_background(double r, double g, double b) { g_rt.set_background(r, g, b); }
+void rt_set_background(double r, double g, double b) { g_rt.set_background_rgb(r, g, b); }
 
 EMSCRIPTEN_KEEPALIVE
 void rt_set_debug_mode(int mode) { g_rt.set_debug_mode(mode); }

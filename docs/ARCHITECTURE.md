@@ -1,36 +1,48 @@
-# 架构（第一刀后）
+# 架构
 
-## 原则
-
-1. **前端只持有一份 `EngineConfig`**
-2. **`useEngine` 是唯一把 Config 投影到 C++ 的地方**
-3. **课程只返回 `ConfigPatch`，不碰 WASM**
-4. **C++ 算法层暂不动**（第二刀再拆 camera/integrator）
+## 两层收口后
 
 ```mermaid
-flowchart LR
-  App["App.tsx 壳"] --> Cfg["EngineConfig"]
-  Cfg --> Hook["useEngine"]
-  Hook --> Apply["applyConfig"]
-  Apply --> WASM["raytracer.wasm"]
-  Course["Curriculum"] -->|patch| Cfg
-  Controls --> Cfg
-  Viewport --> Cfg
+flowchart TB
+  subgraph app["前端"]
+    Cfg["EngineConfig"]
+    Hook["useEngine / applyConfig"]
+  end
+  subgraph cpp["C++"]
+    E["engine"]
+    Cam["camera 只出射线"]
+    PT["path_tracer 积分"]
+    Film["accum film"]
+    Scene["scenes + bvh"]
+  end
+  Cfg --> Hook --> E
+  E --> Cam
+  E --> PT
+  E --> Film
+  E --> Scene
 ```
 
-## 目录
+## C++ 职责
 
-```text
-src/
-  engine/     types · wasm · applyConfig · useEngine
-  lab/        Viewport · Controls · ui
-  components/ Curriculum · Mermaid · LearningPanel
-  curriculum/ 课程数据
-  App.tsx     ≤150 行布局
-cpp/          渲染内核（下一刀拆 integrator）
-```
+| 模块 | 职责 |
+|------|------|
+| `config.h` | EngineConfig / CameraPose / TraceFlags |
+| `camera.h` | get_ray only |
+| `path_tracer.h` | 渲染方程 · NEE · MIS · RR · debug |
+| `engine.h` | 编排 + film + 兼容旧 setter |
+| `scenes.h` | 几何与 lights |
+| `wasm_bridge.cpp` | C API → engine |
 
-## 同步策略
+## 前端
 
-- 场景 / 分辨率 / 开关 / 深度 / 调试 → `applyConfig`（重建）
-- 仅轨道 / FOV / 光圈 → `applyCameraOnly`（不清场景）
+| 模块 | 职责 |
+|------|------|
+| `engine/types.ts` | 唯一 Config |
+| `engine/useEngine.ts` | 投影 + rAF |
+| `lab/*` | UI |
+| `App.tsx` | 壳 |
+
+## 同步
+
+- 重建：scene / res / flags / depth / debug → `applyConfig`
+- 相机：orbit / fov / defocus → `applyCameraOnly` → `engine.set_pose`
