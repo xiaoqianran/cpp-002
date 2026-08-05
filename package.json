@@ -1,0 +1,29 @@
+{
+  "name": "cpp-002-raytracer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "C++ 光线追踪学习项目（WASM 浏览器预览）",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 8080",
+    "build": "tsc --noEmit && vite build",
+    "build:wasm": "bash -lc 'cd /opt/emsdk && source ./emsdk_env.sh >/dev/null 2>&1; cd /workspace/cpp && make wasm'",
+    "build:cli": "make -C cpp cli",
+    "preview": "vite preview --host 0.0.0.0 --port 8080",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lucide-react": "^0.510.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.7.0",
+    "vite": "^8.1.0"
+  }
+}

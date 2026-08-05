@@ -1,0 +1,61 @@
+// WASM 桥接：把 C++ 渲染器暴露给浏览器 JS
+// 编译目标：Emscripten (emcc)
+#include "renderer.h"
+
+#include <cstdlib>
+#include <emscripten.h>
+
+static renderer g_rt;
+
+extern "C" {
+
+EMSCRIPTEN_KEEPALIVE
+void rt_init(int width, int height, int scene_id) {
+  if (width < 16) width = 16;
+  if (height < 16) height = 16;
+  if (width > 1280) width = 1280;
+  if (height > 720) height = 720;
+  g_rt.setup(width, height, scene_id);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void rt_set_camera(double lx, double ly, double lz, double ax, double ay, double az, double vfov,
+                   double defocus, double focus) {
+  g_rt.set_camera(lx, ly, lz, ax, ay, az, vfov, defocus, focus);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void rt_set_scene(int scene_id) { g_rt.set_scene(scene_id); }
+
+EMSCRIPTEN_KEEPALIVE
+void rt_set_max_depth(int depth) { g_rt.set_max_depth(depth); }
+
+EMSCRIPTEN_KEEPALIVE
+void rt_set_background(double r, double g, double b) { g_rt.set_background(r, g, b); }
+
+EMSCRIPTEN_KEEPALIVE
+void rt_reset() { g_rt.reset_accum(); }
+
+EMSCRIPTEN_KEEPALIVE
+void rt_render_pass(int spp) { g_rt.render_pass(spp); }
+
+EMSCRIPTEN_KEEPALIVE
+int rt_width() { return g_rt.get_width(); }
+
+EMSCRIPTEN_KEEPALIVE
+int rt_height() { return g_rt.get_height(); }
+
+EMSCRIPTEN_KEEPALIVE
+int rt_samples() { return g_rt.get_samples(); }
+
+EMSCRIPTEN_KEEPALIVE
+int rt_scene() { return g_rt.get_scene(); }
+
+// 返回 HEAPU8 中的字节偏移，JS 侧用 Module.HEAPU8.subarray 读取
+EMSCRIPTEN_KEEPALIVE
+unsigned char *rt_rgba_ptr() { return g_rt.get_rgba(); }
+
+EMSCRIPTEN_KEEPALIVE
+int rt_rgba_bytes() { return static_cast<int>(g_rt.rgba_bytes()); }
+
+} // extern "C"
