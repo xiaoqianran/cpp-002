@@ -48,6 +48,14 @@ declare global {
   }
 }
 
+/** Vite base，GitHub Pages 上为 /cpp-002/，本地为 / */
+function assetUrl(path: string): string {
+  const base = import.meta.env.BASE_URL || "/";
+  const normalizedBase = base.endsWith("/") ? base : `${base}/`;
+  const normalizedPath = path.replace(/^\//, "");
+  return `${normalizedBase}${normalizedPath}`;
+}
+
 let loaderPromise: Promise<void> | null = null;
 
 function loadScript(src: string): Promise<void> {
@@ -88,14 +96,15 @@ function loadScript(src: string): Promise<void> {
 }
 
 export async function createRayTracer(): Promise<RayTracerApi> {
-  await loadScript("/raytracer.js");
+  const jsUrl = assetUrl("raytracer.js");
+  await loadScript(jsUrl);
   const factory = window.createRayTracerModule;
   if (!factory) {
     throw new Error("createRayTracerModule 未找到，请确认 public/raytracer.js 已编译");
   }
 
   const mod = await factory({
-    locateFile: (path) => `/${path}`,
+    locateFile: (path) => assetUrl(path),
   });
 
   const wrap =

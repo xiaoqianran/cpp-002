@@ -2,7 +2,8 @@
 
 用 **C++** 实现路径追踪（Path Tracing），经 **Emscripten** 编译为 **WASM**，在浏览器里**渐进渲染**；配套中文讲解与 Mermaid 架构图。
 
-> 仓库：`xiaoqianran/cpp-002`  
+> 仓库：[`xiaoqianran/cpp-002`](https://github.com/xiaoqianran/cpp-002)  
+> 在线演示（GitHub Pages）：[https://xiaoqianran.github.io/cpp-002/](https://xiaoqianran.github.io/cpp-002/)  
 > 灵感：Peter Shirley《Ray Tracing in One Weekend》系列（教学结构）
 
 ---
@@ -13,6 +14,25 @@
 - 三种预设场景、可拖拽环绕相机、FOV / 景深 / 反弹深度
 - 蒙特卡洛渐进采样：画面从噪点逐渐干净
 - 本地 CLI：输出 PPM 图片
+
+---
+
+## GitHub Pages 部署
+
+推送到 `main` 会触发 [`.github/workflows/deploy-pages.yml`](./.github/workflows/deploy-pages.yml)：
+
+```mermaid
+flowchart LR
+  Push[push main] --> CI[GitHub Actions]
+  CI --> Build["npm ci && BASE_PATH=/cpp-002/ npm run build"]
+  Build --> Artifact[upload-pages-artifact]
+  Artifact --> Deploy[deploy-pages]
+  Deploy --> Site[xiaoqianran.github.io/cpp-002]
+```
+
+- **Pages 源**：GitHub Actions（不是 branch `/docs`）
+- **构建 base**：`/cpp-002/`（适配项目站路径）
+- 也可在 Actions 页手动 **Run workflow**
 
 ---
 
@@ -101,21 +121,13 @@ flowchart LR
 
 ```text
 cpp-002/
+├── .github/workflows/deploy-pages.yml
 ├── cpp/                  # C++ 核心（学习主战场）
-│   ├── vec3.h            # 向量代数
-│   ├── ray.h             # 射线
-│   ├── sphere.h          # 球求交
-│   ├── material.h        # 三种材质
-│   ├── camera.h          # 相机与 ray_color
-│   ├── renderer.h        # 渐进渲染器
-│   ├── wasm_bridge.cpp   # WASM 导出
-│   ├── main_cli.cpp      # 本地 PPM 输出
-│   └── Makefile
 ├── public/
-│   ├── raytracer.js      # emcc 产物
+│   ├── raytracer.js
 │   └── raytracer.wasm
 ├── src/                  # React 控制台 UI
-├── docs/ARCHITECTURE.md  # 更细的图解
+├── docs/ARCHITECTURE.md
 └── README.md
 ```
 
@@ -133,9 +145,15 @@ cpp-002/
 
 ```bash
 npm install
-# 若需重编 WASM：
-# source /path/to/emsdk_env.sh && make -C cpp wasm
 npm run dev
+```
+
+### 模拟 Pages 路径构建
+
+```bash
+BASE_PATH=/cpp-002/ npm run build
+npx vite preview --host 0.0.0.0 --port 8080
+# 访问 /cpp-002/
 ```
 
 ### CLI 渲染 PPM
