@@ -39,6 +39,9 @@ EMSCRIPTEN_KEEPALIVE
 void rt_set_use_bvh(int enabled) { g_rt.set_use_bvh(enabled); }
 
 EMSCRIPTEN_KEEPALIVE
+void rt_set_use_nee(int enabled) { g_rt.set_use_nee(enabled); }
+
+EMSCRIPTEN_KEEPALIVE
 void rt_reset() { g_rt.reset_accum(); }
 
 EMSCRIPTEN_KEEPALIVE
@@ -63,7 +66,13 @@ EMSCRIPTEN_KEEPALIVE
 int rt_use_bvh() { return g_rt.get_use_bvh(); }
 
 EMSCRIPTEN_KEEPALIVE
+int rt_use_nee() { return g_rt.get_use_nee(); }
+
+EMSCRIPTEN_KEEPALIVE
 int rt_primitive_count() { return g_rt.get_primitive_count(); }
+
+EMSCRIPTEN_KEEPALIVE
+int rt_light_count() { return g_rt.get_light_count(); }
 
 EMSCRIPTEN_KEEPALIVE
 unsigned char *rt_rgba_ptr() { return g_rt.get_rgba(); }

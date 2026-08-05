@@ -9,8 +9,6 @@ class material {
 public:
   virtual ~material() = default;
 
-  // 散射：输入入射射线与命中信息，输出衰减 attenuation 与出射 scattered
-  // 返回 false 表示吸收（或纯发光、不再继续追）
   virtual bool scatter(const ray &r_in, const hit_record &rec, color &attenuation,
                        ray &scattered) const {
     (void)r_in;
@@ -20,14 +18,18 @@ public:
     return false;
   }
 
-  // 自发光（默认不发光）
   virtual color emitted(const hit_record &rec) const {
     (void)rec;
     return color(0, 0, 0);
   }
+
+  // 是否漫反射（可做 NEE 直接光）
+  virtual bool is_lambertian() const { return false; }
+
+  // 朗伯 BRDF = albedo/π；非朗伯返回 0
+  virtual color brdf_lambert(const hit_record &) const { return color(0, 0, 0); }
 };
 
-// ---------- Lambertian 漫反射 ----------
 class lambertian : public material {
 public:
   lambertian(const color &albedo) : albedo(albedo) {}
@@ -41,11 +43,14 @@ public:
     return true;
   }
 
+  bool is_lambertian() const override { return true; }
+
+  color brdf_lambert(const hit_record &) const override { return albedo / pi; }
+
 private:
   color albedo;
 };
 
-// ---------- Metal 金属（模糊反射） ----------
 class metal : public material {
 public:
   metal(const color &albedo, double fuzz) : albedo(albedo), fuzz(fuzz < 1 ? fuzz : 1) {}
@@ -63,7 +68,6 @@ private:
   double fuzz;
 };
 
-// ---------- Dielectric 介质（折射 + Schlick 反射） ----------
 class dielectric : public material {
 public:
   dielectric(double refraction_index) : refraction_index(refraction_index) {}
@@ -99,13 +103,13 @@ private:
   }
 };
 
-// ---------- Diffuse light 面光源 / 发光体 ----------
-// 不散射，只返回 emit；正面与背面都发光（教学简化）
 class diffuse_light : public material {
 public:
   diffuse_light(const color &emit) : emit(emit) {}
 
   color emitted(const hit_record &) const override { return emit; }
+
+  color radiance() const { return emit; }
 
 private:
   color emit;

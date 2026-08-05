@@ -1,4 +1,4 @@
-// 平行四边形（墙面 / 面光源）+ AABB
+// 平行四边形（墙面 / 面光源）+ AABB + 面采样
 #pragma once
 
 #include "hittable.h"
@@ -10,10 +10,10 @@ public:
       : Q(Q), u(u), v(v), mat(mat) {
     auto n = cross(u, v);
     normal = unit_vector(n);
+    area = n.length();
     D = dot(normal, Q);
     w = n / dot(n, n);
 
-    // 四个角点的包围盒
     point3 p0 = Q;
     point3 p1 = Q + u;
     point3 p2 = Q + v;
@@ -44,6 +44,15 @@ public:
 
   aabb bounding_box() const override { return bbox; }
 
+  // 面光源均匀采样：P = Q + s u + t v
+  point3 sample_point() const {
+    return Q + (random_double() * u) + (random_double() * v);
+  }
+
+  double surface_area() const { return area; }
+  vec3 outward_normal() const { return normal; }
+  shared_ptr<material> material_ptr() const { return mat; }
+
 private:
   point3 Q;
   vec3 u, v;
@@ -51,5 +60,6 @@ private:
   vec3 normal;
   double D;
   vec3 w;
+  double area = 0;
   aabb bbox;
 };

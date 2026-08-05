@@ -1,19 +1,22 @@
-// 预设场景构建
+// 预设场景构建（同时收集面光源列表供 NEE）
 #pragma once
 
 #include "hittable.h"
 #include "material.h"
 #include "quad.h"
 #include "sphere.h"
+#include <vector>
 
 // scene_id:
 // 0 = 经典三球
 // 1 = 玻璃聚焦
 // 2 = 金属走廊
 // 3 = 康奈尔箱
-// 4 = 多球（BVH 压力测试；确定性布局，可重复对比）
-inline void build_scene(int scene_id, hittable_list &world) {
+// 4 = 多球 BVH 测试
+inline void build_scene(int scene_id, hittable_list &world,
+                        std::vector<shared_ptr<quad>> &lights) {
   world.clear();
+  lights.clear();
 
   if (scene_id == 1) {
     auto ground = make_shared<lambertian>(color(0.35, 0.35, 0.4));
@@ -50,14 +53,18 @@ inline void build_scene(int scene_id, hittable_list &world) {
     auto red = make_shared<lambertian>(color(0.65, 0.05, 0.05));
     auto green = make_shared<lambertian>(color(0.12, 0.45, 0.15));
     auto white = make_shared<lambertian>(color(0.73, 0.73, 0.73));
-    auto light = make_shared<diffuse_light>(color(15, 15, 15));
+    auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
 
     world.add(make_shared<quad>(point3(-1, 0, -1), vec3(0, 0, 2), vec3(0, 2, 0), red));
     world.add(make_shared<quad>(point3(1, 0, 1), vec3(0, 0, -2), vec3(0, 2, 0), green));
     world.add(make_shared<quad>(point3(-1, 0, -1), vec3(2, 0, 0), vec3(0, 0, 2), white));
     world.add(make_shared<quad>(point3(-1, 2, 1), vec3(2, 0, 0), vec3(0, 0, -2), white));
     world.add(make_shared<quad>(point3(-1, 0, -1), vec3(2, 0, 0), vec3(0, 2, 0), white));
-    world.add(make_shared<quad>(point3(-0.35, 1.99, -0.35), vec3(0.7, 0, 0), vec3(0, 0, 0.7), light));
+
+    auto light_quad =
+        make_shared<quad>(point3(-0.35, 1.99, -0.35), vec3(0.7, 0, 0), vec3(0, 0, 0.7), light_mat);
+    world.add(light_quad);
+    lights.push_back(light_quad);
 
     world.add(make_shared<sphere>(point3(-0.35, 0.35, 0.15), 0.35, white));
     world.add(make_shared<sphere>(point3(0.4, 0.35, -0.25), 0.35,
@@ -67,7 +74,6 @@ inline void build_scene(int scene_id, hittable_list &world) {
   }
 
   if (scene_id == 4) {
-    // 有限地面：AABB 小，BVH 才能剪枝（超大球会毁掉加速）
     auto ground_mat = make_shared<lambertian>(color(0.48, 0.48, 0.48));
     world.add(make_shared<quad>(point3(-12, 0, -12), vec3(24, 0, 0), vec3(0, 0, 24), ground_mat));
 
@@ -75,7 +81,6 @@ inline void build_scene(int scene_id, hittable_list &world) {
     world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, make_shared<lambertian>(color(0.4, 0.2, 0.1))));
     world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, make_shared<metal>(color(0.7, 0.6, 0.5), 0.0)));
 
-    // 确定性抖动：用整数 hash，开关 BVH 时场景不变
     for (int a = -7; a < 8; a++) {
       for (int b = -7; b < 8; b++) {
         int h = a * 73856093 ^ b * 19349663;
@@ -103,7 +108,6 @@ inline void build_scene(int scene_id, hittable_list &world) {
     return;
   }
 
-  // 默认：经典三球
   auto ground_material = make_shared<lambertian>(color(0.5, 0.5, 0.5));
   world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_material));
 

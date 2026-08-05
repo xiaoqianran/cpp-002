@@ -1,4 +1,4 @@
-// 渐进式渲染器：BVH 可选、多场景
+// 渐进式渲染器：BVH + NEE
 #pragma once
 
 #include "bvh.h"
@@ -54,6 +54,11 @@ public:
     reset_accum();
   }
 
+  void set_use_nee(int enabled) {
+    cam.use_nee = enabled != 0;
+    reset_accum();
+  }
+
   void set_scene(int id) {
     scene_id = id;
     rebuild_world();
@@ -94,7 +99,9 @@ public:
   int get_scene() const { return scene_id; }
   int get_debug_mode() const { return cam.debug_mode; }
   int get_use_bvh() const { return use_bvh ? 1 : 0; }
+  int get_use_nee() const { return cam.use_nee ? 1 : 0; }
   int get_primitive_count() const { return primitive_count; }
+  int get_light_count() const { return static_cast<int>(lights.size()); }
   unsigned char *get_rgba() { return rgba.data(); }
   size_t rgba_bytes() const { return rgba.size(); }
 
@@ -107,13 +114,15 @@ private:
   bool use_bvh = true;
   camera cam;
   hittable_list raw_world;
+  std::vector<shared_ptr<quad>> lights;
   shared_ptr<hittable> scene_root;
   std::vector<double> accum;
   std::vector<unsigned char> rgba;
 
   void rebuild_world() {
-    build_scene(scene_id, raw_world);
+    build_scene(scene_id, raw_world, lights);
     primitive_count = static_cast<int>(raw_world.objects.size());
+    cam.lights = &lights;
     if (use_bvh && primitive_count > 0) {
       scene_root = make_shared<bvh_node>(raw_world);
     } else {
@@ -155,6 +164,7 @@ private:
       cam.focus_dist = 3.2;
       cam.background = color(0, 0, 0);
       cam.max_depth = 50;
+      cam.use_nee = true;
     } else if (scene_id == 4) {
       cam.lookfrom = point3(13, 2, 3);
       cam.lookat = point3(0, 0, 0);

@@ -19,13 +19,16 @@ export type RayTracerApi = {
   setMaxDepth: (depth: number) => void;
   setDebugMode: (mode: number) => void;
   setUseBvh: (enabled: boolean) => void;
+  setUseNee: (enabled: boolean) => void;
   reset: () => void;
   renderPass: (spp: number) => void;
   width: () => number;
   height: () => number;
   samples: () => number;
   useBvh: () => number;
+  useNee: () => number;
   primitiveCount: () => number;
+  lightCount: () => number;
   rgba: () => Uint8ClampedArray;
 };
 
@@ -143,13 +146,16 @@ export async function createRayTracer(): Promise<RayTracerApi> {
   const setMaxDepth = wrap<(d: number) => void>("rt_set_max_depth", null, ["number"]);
   const setDebugMode = wrap<(m: number) => void>("rt_set_debug_mode", null, ["number"]);
   const setUseBvhRaw = wrap<(e: number) => void>("rt_set_use_bvh", null, ["number"]);
+  const setUseNeeRaw = wrap<(e: number) => void>("rt_set_use_nee", null, ["number"]);
   const reset = wrap<() => void>("rt_reset", null, []);
   const renderPass = wrap<(spp: number) => void>("rt_render_pass", null, ["number"]);
   const width = wrap<() => number>("rt_width", "number", []);
   const height = wrap<() => number>("rt_height", "number", []);
   const samples = wrap<() => number>("rt_samples", "number", []);
   const useBvh = wrap<() => number>("rt_use_bvh", "number", []);
+  const useNee = wrap<() => number>("rt_use_nee", "number", []);
   const primitiveCount = wrap<() => number>("rt_primitive_count", "number", []);
+  const lightCount = wrap<() => number>("rt_light_count", "number", []);
 
   return {
     init,
@@ -158,13 +164,16 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     setMaxDepth,
     setDebugMode,
     setUseBvh: (enabled: boolean) => setUseBvhRaw(enabled ? 1 : 0),
+    setUseNee: (enabled: boolean) => setUseNeeRaw(enabled ? 1 : 0),
     reset,
     renderPass,
     width,
     height,
     samples,
     useBvh,
+    useNee,
     primitiveCount,
+    lightCount,
     rgba: () => {
       const ptr = mod._rt_rgba_ptr();
       const bytes = mod._rt_rgba_bytes();
