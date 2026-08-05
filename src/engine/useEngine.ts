@@ -17,15 +17,19 @@ export type EngineSnapshot = {
   passMs: number;
   primCount: number;
   lightCount: number;
+  scanY: number;
 };
 
-/** 持有 WASM；Config 唯一投影点 */
+/** 自适应行预算：控制单次 rAF 耗时，拖拽更跟手 */
+const TARGET_MS = 14;
+
 export function useEngine(cfg: EngineConfig, running: boolean) {
   const apiRef = useRef<RayTracerApi | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cfgRef = useRef(cfg);
   const prevCfgRef = useRef<EngineConfig | null>(null);
   const rafRef = useRef(0);
+  const rowsBudgetRef = useRef(32);
 
   const [snap, setSnap] = useState<EngineSnapshot>({
     status: "loading",
@@ -34,6 +38,7 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
     passMs: 0,
     primCount: 0,
     lightCount: 0,
+    scanY: 0,
   });
 
   cfgRef.current = cfg;
@@ -59,6 +64,7 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
       samples: api.samples(),
       primCount: api.primitiveCount(),
       lightCount: api.lightCount(),
+      scanY: api.scanY(),
     }));
   }, []);
 
@@ -74,6 +80,7 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
           throw new Error("引擎缓冲未就绪（rt_apply）");
         }
         prevCfgRef.current = { ...cfgRef.current };
+        rowsBudgetRef.current = Math.max(8, Math.floor(api.height() / 4));
         setSnap((s) => ({ ...s, status: "ready", error: null }));
         paint();
       } catch (e) {
@@ -96,6 +103,7 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
     const prev = prevCfgRef.current;
     if (!prev || configNeedsRebuild(prev, cfg)) {
       applyConfig(api, cfg);
+      rowsBudgetRef.current = Math.max(8, Math.floor(api.height() / 4));
     } else if (configNeedsCamera(prev, cfg)) {
       applyCameraOnly(api, cfg);
     }
@@ -108,9 +116,22 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
     let alive = true;
     const loop = () => {
       if (!alive || !apiRef.current) return;
+      const api = apiRef.current;
+      const h = api.height();
+      let budget = rowsBudgetRef.current;
+      if (budget > h) budget = h;
+
       const t0 = performance.now();
-      apiRef.current.renderPass(cfgRef.current.spp);
+      api.renderPass(cfgRef.current.spp, budget);
       const ms = performance.now() - t0;
+
+      // 自适应：太慢减行，太快加行
+      if (ms > TARGET_MS * 1.4) {
+        rowsBudgetRef.current = Math.max(4, Math.floor(budget * 0.7));
+      } else if (ms < TARGET_MS * 0.6) {
+        rowsBudgetRef.current = Math.min(h, Math.floor(budget * 1.25) + 1);
+      }
+
       setSnap((s) => ({ ...s, passMs: ms }));
       paint();
       rafRef.current = requestAnimationFrame(loop);
@@ -125,7 +146,7 @@ export function useEngine(cfg: EngineConfig, running: boolean) {
   const reset = useCallback(() => {
     apiRef.current?.reset();
     paint();
-    setSnap((s) => ({ ...s, samples: 0 }));
+    setSnap((s) => ({ ...s, samples: 0, scanY: 0 }));
   }, [paint]);
 
   return { canvasRef, snap, reset };

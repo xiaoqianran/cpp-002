@@ -1,5 +1,6 @@
+import { packConfig } from "./pack";
 import type { EngineConfig } from "./types";
-import { lookTarget, orbitPosition, RES_PRESETS } from "./types";
+import { lookTarget, orbitPosition } from "./types";
 import type { RayTracerApi } from "./wasm";
 
 function poseOf(cfg: EngineConfig) {
@@ -18,26 +19,32 @@ function poseOf(cfg: EngineConfig) {
   };
 }
 
-/** 完整配置 → 单次 rt_apply */
+/** 完整配置 → rt_apply（经 pack 保证字段序） */
 export function applyConfig(api: RayTracerApi, cfg: EngineConfig) {
-  const res = RES_PRESETS[cfg.resIdx] ?? RES_PRESETS[0]!;
-  const pose = poseOf(cfg);
+  const p = packConfig(cfg);
   api.apply({
-    width: res.w,
-    height: res.h,
-    sceneId: cfg.sceneId,
-    maxDepth: cfg.maxDepth,
-    debugMode: cfg.debugMode,
-    bvh: cfg.bvh,
-    nee: cfg.nee,
-    mis: cfg.mis,
-    rr: cfg.rr,
-    ...pose,
-    bg: cfg.background,
+    width: p[0]!,
+    height: p[1]!,
+    sceneId: p[2]!,
+    maxDepth: p[3]!,
+    debugMode: p[4]!,
+    bvh: p[5]! !== 0,
+    nee: p[6]! !== 0,
+    mis: p[7]! !== 0,
+    rr: p[8]! !== 0,
+    lx: p[9]!,
+    ly: p[10]!,
+    lz: p[11]!,
+    ax: p[12]!,
+    ay: p[13]!,
+    az: p[14]!,
+    vfov: p[15]!,
+    defocus: p[16]!,
+    focus: p[17]!,
+    bg: [p[18]!, p[19]!, p[20]!],
   });
 }
 
-/** 仅相机 → rt_apply_pose */
 export function applyCameraOnly(api: RayTracerApi, cfg: EngineConfig) {
   api.applyPose(poseOf(cfg));
 }

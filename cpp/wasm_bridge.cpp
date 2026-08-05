@@ -1,4 +1,4 @@
-// WASM 主入口：rt_apply / rt_apply_pose
+// WASM：rt_apply / rt_apply_pose / rt_render_pass(rows)
 #include "engine.h"
 
 #include <emscripten.h>
@@ -51,8 +51,9 @@ void rt_apply_pose(double lx, double ly, double lz, double ax, double ay, double
 EMSCRIPTEN_KEEPALIVE
 void rt_reset() { g_eng.reset_accum(); }
 
+/** spp + 行预算（0=整帧） */
 EMSCRIPTEN_KEEPALIVE
-void rt_render_pass(int spp) { g_eng.render_pass(spp); }
+void rt_render_pass(int spp, int rows_budget) { g_eng.render_pass(spp, rows_budget); }
 
 EMSCRIPTEN_KEEPALIVE
 int rt_width() { return g_eng.get_width(); }
@@ -62,6 +63,9 @@ int rt_height() { return g_eng.get_height(); }
 
 EMSCRIPTEN_KEEPALIVE
 int rt_samples() { return g_eng.get_samples(); }
+
+EMSCRIPTEN_KEEPALIVE
+int rt_scan_y() { return g_eng.get_scan_y(); }
 
 EMSCRIPTEN_KEEPALIVE
 int rt_scene() { return g_eng.get_scene(); }
@@ -93,6 +97,7 @@ unsigned char *rt_rgba_ptr() { return g_eng.get_rgba(); }
 EMSCRIPTEN_KEEPALIVE
 int rt_rgba_bytes() { return static_cast<int>(g_eng.rgba_bytes()); }
 
+// 旧 API
 EMSCRIPTEN_KEEPALIVE
 void rt_init(int width, int height, int scene_id) {
   EngineConfig c = g_eng.get_config();

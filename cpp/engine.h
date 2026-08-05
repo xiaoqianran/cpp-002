@@ -1,4 +1,4 @@
-// 引擎：编排 Camera + PathTracer + Film + Scene
+// 引擎：Camera + PathTracer + Film；扫描线渐进渲染
 #pragma once
 
 #include "bvh.h"
@@ -12,7 +12,6 @@
 
 class engine {
 public:
-  /** 一次应用完整配置（推荐入口） */
   void apply(const EngineConfig &cfg) {
     const bool size_changed =
         cfg.width != config.width || cfg.height != config.height || accum.empty();
@@ -41,26 +40,47 @@ public:
   void reset_accum() {
     if (!accum.empty()) std::fill(accum.begin(), accum.end(), 0.0);
     samples_done = 0;
+    scan_y = 0;
+    pass_spp = 1;
   }
 
-  void render_pass(int spp) {
+  /**
+   * 扫描线渐进：
+   * - rows_budget>0：本调用最多画这么多行，满高后 samples_done += pass_spp
+   * - rows_budget<=0：一次画完整帧
+   * bake 时已扫行用 (samples_done+pass_spp)，未扫行用 samples_done
+   */
+  void render_pass(int spp, int rows_budget = 0) {
     if (config.width <= 0 || config.height <= 0 || !scene_root || accum.empty()) return;
     if (spp < 1) spp = 1;
 
-    for (int j = 0; j < config.height; ++j) {
-      for (int i = 0; i < config.width; ++i) {
+    const int H = config.height;
+    const int W = config.width;
+    if (scan_y == 0) pass_spp = spp;
+
+    int budget = rows_budget <= 0 ? H : rows_budget;
+    if (budget < 1) budget = 1;
+
+    for (int n = 0; n < budget && scan_y < H; ++n) {
+      const int j = scan_y;
+      for (int i = 0; i < W; ++i) {
         color pixel(0, 0, 0);
-        for (int s = 0; s < spp; ++s) {
+        for (int s = 0; s < pass_spp; ++s) {
           ray r = cam.get_ray(i, j);
           pixel += tracer.trace(r, *scene_root);
         }
-        const size_t idx = static_cast<size_t>((j * config.width + i) * 3);
+        const size_t idx = static_cast<size_t>((j * W + i) * 3);
         accum[idx + 0] += pixel.x();
         accum[idx + 1] += pixel.y();
         accum[idx + 2] += pixel.z();
       }
+      ++scan_y;
     }
-    samples_done += spp;
+
+    if (scan_y >= H) {
+      samples_done += pass_spp;
+      scan_y = 0;
+    }
     bake_rgba();
   }
 
@@ -87,38 +107,31 @@ public:
     config.flags.max_depth = d < 1 ? 1 : d;
     apply(config);
   }
-
   void set_debug_mode(int mode) {
     config.flags.debug_mode = mode < 0 ? 0 : mode;
     apply(config);
   }
-
   void set_use_bvh(int enabled) {
     config.flags.bvh = enabled != 0;
     apply(config);
   }
-
   void set_use_nee(int enabled) {
     config.flags.nee = enabled != 0;
     apply(config);
   }
-
   void set_use_mis(int enabled) {
     config.flags.mis = enabled != 0;
     apply(config);
   }
-
   void set_use_rr(int enabled) {
     config.flags.rr = enabled != 0;
     apply(config);
   }
-
   void set_scene(int id) {
     config.scene_id = id;
     config.background = scene_background(id);
     apply(config);
   }
-
   void set_background_rgb(double r, double g, double b) {
     config.background = color(r, g, b);
     apply(config);
@@ -127,6 +140,7 @@ public:
   int get_width() const { return config.width; }
   int get_height() const { return config.height; }
   int get_samples() const { return samples_done; }
+  int get_scan_y() const { return scan_y; }
   int get_scene() const { return config.scene_id; }
   int get_debug_mode() const { return config.flags.debug_mode; }
   int get_use_bvh() const { return config.flags.bvh ? 1 : 0; }
@@ -150,6 +164,8 @@ private:
   std::vector<unsigned char> rgba;
   int samples_done = 0;
   int primitive_count = 0;
+  int scan_y = 0;
+  int pass_spp = 1;
 
   void ensure_buffers() {
     const size_t n = static_cast<size_t>(std::max(1, config.width) * std::max(1, config.height));
@@ -169,13 +185,21 @@ private:
   }
 
   void bake_rgba() {
-    if (samples_done <= 0 || rgba.empty()) return;
-    const double inv = 1.0 / samples_done;
-    for (int n = 0; n < config.width * config.height; ++n) {
-      color c(accum[static_cast<size_t>(n * 3 + 0)] * inv,
-              accum[static_cast<size_t>(n * 3 + 1)] * inv,
-              accum[static_cast<size_t>(n * 3 + 2)] * inv);
-      write_color_rgba(&rgba[static_cast<size_t>(n * 4)], c);
+    if (rgba.empty()) return;
+    const int W = config.width;
+    const int H = config.height;
+    const int done = samples_done;
+    const int partial = (scan_y > 0) ? pass_spp : 0;
+
+    for (int j = 0; j < H; ++j) {
+      const int s =
+          (j < scan_y) ? (done + partial) : done; // 本趟已写行多 pass_spp
+      const double inv = s > 0 ? 1.0 / s : 0.0;
+      for (int i = 0; i < W; ++i) {
+        const size_t idx = static_cast<size_t>((j * W + i) * 3);
+        color c(accum[idx + 0] * inv, accum[idx + 1] * inv, accum[idx + 2] * inv);
+        write_color_rgba(&rgba[static_cast<size_t>((j * W + i) * 4)], c);
+      }
     }
   }
 };

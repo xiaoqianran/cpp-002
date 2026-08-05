@@ -655,7 +655,7 @@ pdf_ω = (1/(N A)) · r² / cosθ_L`,
             type: "map",
             rows: [
               { file: "cpp/color.h", note: "linear_to_gamma / write_color_rgba" },
-              { file: "cpp/renderer.h", note: "accum 均值后 bake" },
+              { file: "cpp/engine.h", note: "accum 均值后 bake" },
             ],
           },
         ],

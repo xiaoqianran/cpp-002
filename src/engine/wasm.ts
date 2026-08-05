@@ -1,15 +1,15 @@
 /**
- * WASM 适配：只暴露 apply / applyPose / render / 读缓冲
+ * WASM 适配：apply / applyPose / renderPass(rows)
  */
 
 export type RayTracerApi = {
-  /** 一次写入完整配置 */
   apply: (args: ApplyArgs) => void;
-  /** 仅相机姿态 */
   applyPose: (args: PoseArgs) => void;
   reset: () => void;
-  renderPass: (spp: number) => void;
+  /** rowsBudget: 0=整帧；>0 扫描线预算 */
+  renderPass: (spp: number, rowsBudget?: number) => void;
   samples: () => number;
+  scanY: () => number;
   primitiveCount: () => number;
   lightCount: () => number;
   width: () => number;
@@ -124,45 +124,56 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     (...a: Parameters<T>): ReturnType<T> =>
       mod.ccall(name, ret, args, a as unknown[]) as ReturnType<T>;
 
+  const nums = (n: number) => Array(n).fill("number") as string[];
+
   const applyRaw = wrap<
     (
-      w: number,
-      h: number,
-      scene: number,
-      depth: number,
-      debug: number,
-      bvh: number,
-      nee: number,
-      mis: number,
-      rr: number,
-      lx: number,
-      ly: number,
-      lz: number,
-      ax: number,
-      ay: number,
-      az: number,
-      vfov: number,
-      defocus: number,
-      focus: number,
-      bgr: number,
-      bgg: number,
-      bgb: number,
+      ...args: [
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+      ]
     ) => void
-  >("rt_apply", null, Array(21).fill("number") as string[]);
+  >("rt_apply", null, nums(21));
 
   const applyPoseRaw = wrap<
     (
-      lx: number,
-      ly: number,
-      lz: number,
-      ax: number,
-      ay: number,
-      az: number,
-      vfov: number,
-      defocus: number,
-      focus: number,
+      ...args: [
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+        number,
+      ]
     ) => void
-  >("rt_apply_pose", null, Array(9).fill("number") as string[]);
+  >("rt_apply_pose", null, nums(9));
+
+  const renderRaw = wrap<(spp: number, rows: number) => void>("rt_render_pass", null, [
+    "number",
+    "number",
+  ]);
 
   return {
     apply: (a) =>
@@ -192,8 +203,9 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     applyPose: (a) =>
       applyPoseRaw(a.lx, a.ly, a.lz, a.ax, a.ay, a.az, a.vfov, a.defocus, a.focus),
     reset: wrap<() => void>("rt_reset", null, []),
-    renderPass: wrap<(spp: number) => void>("rt_render_pass", null, ["number"]),
+    renderPass: (spp, rowsBudget = 0) => renderRaw(spp, rowsBudget),
     samples: wrap<() => number>("rt_samples", "number", []),
+    scanY: wrap<() => number>("rt_scan_y", "number", []),
     primitiveCount: wrap<() => number>("rt_primitive_count", "number", []),
     lightCount: wrap<() => number>("rt_light_count", "number", []),
     width: wrap<() => number>("rt_width", "number", []),
