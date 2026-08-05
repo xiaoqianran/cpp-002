@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
 
 /**
- * 中文讲解面板：流程与源码地图。
- * 完整 Mermaid 图见 README.md 与 docs/ARCHITECTURE.md（GitHub 可渲染）。
+ * 中文讲解面板：面光源 / 康奈尔箱 / 调试视图
  */
 
 export function LearningPanel({
@@ -15,16 +14,15 @@ export function LearningPanel({
   if (compact) {
     return (
       <div className="rounded-[var(--radius-xl)] border border-border bg-bg-elevated p-4">
-        <h2 className="mb-2 text-sm font-medium">一图读懂当前帧</h2>
+        <h2 className="mb-2 text-sm font-medium">发光方程（简化）</h2>
         <pre className="overflow-x-auto rounded-[var(--radius-md)] bg-bg p-3 font-mono text-[11px] leading-relaxed text-fg-muted">
-{`相机 → 像素射线
-  → 最近命中(球体)
-  → 材质散射
-  → 递归着色
-  → 累加 / gamma
-  → Canvas`}
+{`L = emitted
+  + albedo * L_scatter
+
+康奈尔箱：
+  emitted 来自天花板面光
+  红/绿墙把色染进间接光`}
         </pre>
-        <p className="mt-2 text-xs text-fg-subtle">下方有完整架构与源码对应表。</p>
       </div>
     );
   }
@@ -32,20 +30,16 @@ export function LearningPanel({
   if (!full) {
     return (
       <div className="rounded-[var(--radius-xl)] border border-border bg-bg-elevated p-4">
-        <h2 className="mb-2 text-sm font-semibold">核心公式</h2>
+        <h2 className="mb-2 text-sm font-semibold">本版新增</h2>
         <ul className="space-y-2 text-sm text-fg-muted">
           <li>
-            射线：<code className="font-mono text-fg">P(t) = O + t·D</code>
+            <code className="font-mono text-fg">diffuse_light</code>：自发光材质
           </li>
           <li>
-            球交：判别式 <code className="font-mono text-fg">h² − a·c</code>
+            <code className="font-mono text-fg">quad</code>：墙面与面光源
           </li>
-          <li>
-            反射：<code className="font-mono text-fg">R = V − 2(V·N)N</code>
-          </li>
-          <li>
-            漫反射方向：<code className="font-mono text-fg">N + random_unit</code>
-          </li>
+          <li>调试：法线 / 深度 / 发光体</li>
+          <li>康奈尔箱场景（id=3）</li>
         </ul>
       </div>
     );
@@ -53,44 +47,34 @@ export function LearningPanel({
 
   return (
     <section className="rounded-[var(--radius-xl)] border border-border bg-bg-elevated p-5 md:p-6">
-      <h2 className="text-lg font-semibold tracking-tight">边写边学 · 架构讲解</h2>
+      <h2 className="text-lg font-semibold tracking-tight">边写边学 · 面光源与康奈尔箱</h2>
       <p className="mt-1 max-w-3xl text-sm text-fg-muted">
-        下列结构对应仓库 <code className="font-mono text-fg">cpp/</code>{" "}
-        目录。GitHub README 中有可渲染的 Mermaid 图；这里用表格与流程摘要便于在预览里阅读。
+        之前只靠「天空色」当环境光。现在射线命中表面时先加{" "}
+        <code className="text-fg">emitted</code>
+        ，再决定是否散射——这就是最简路径追踪光照模型。
       </p>
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <Card title="渲染主循环（渐进采样）">
-          <ol className="list-decimal space-y-1 pl-4 text-sm text-fg-muted">
-            <li>
-              JS 每帧调用 <code className="text-fg">rt_render_pass(spp)</code>
-            </li>
-            <li>C++ 对每个像素发 spp 条 jitter 射线</li>
-            <li>
-              <code className="text-fg">ray_color</code> 递归散射（深度=max_depth）
-            </li>
-            <li>颜色累加到 float 缓冲，再 gamma 写入 RGBA8</li>
-            <li>JS 把 HEAPU8 像素贴到 Canvas</li>
-          </ol>
+        <Card title="着色方程">
+          <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed text-fg-muted">
+{`ray_color(r):
+  if miss → background   # 康奈尔箱=黑
+  emit = mat.emitted()
+  if not scatter → emit
+  return emit
+       + attenuation
+       * ray_color(scattered)`}
+          </pre>
         </Card>
 
-        <Card title="源码地图">
+        <Card title="源码地图（本版）">
           <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="text-fg-subtle">
-                <th className="pb-2 font-medium">文件</th>
-                <th className="pb-2 font-medium">职责</th>
-              </tr>
-            </thead>
             <tbody className="text-fg-muted">
               {[
-                ["vec3.h", "向量 / 点 / 颜色代数"],
-                ["ray.h", "射线参数化"],
-                ["sphere.h", "解析求交"],
-                ["material.h", "Lambert / Metal / Glass"],
-                ["camera.h", "成像平面 + 景深"],
-                ["renderer.h", "累加缓冲与 pass"],
-                ["wasm_bridge.cpp", "导出 C API"],
+                ["material.h", "emitted + diffuse_light"],
+                ["quad.h", "平行四边形求交"],
+                ["scenes.h", "scene_id=3 康奈尔箱"],
+                ["camera.h", "debug_mode 0..3"],
               ].map(([f, d]) => (
                 <tr key={f} className="border-t border-border/60">
                   <td className="py-1.5 font-mono text-xs text-fg">{f}</td>
@@ -101,23 +85,21 @@ export function LearningPanel({
           </table>
         </Card>
 
-        <Card title="材质散射决策">
-          <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed text-fg-muted">
-{`命中表面
-├─ Lambertian → N + 随机单位向量
-├─ Metal      → reflect + fuzz 球扰动
-└─ Dielectric → Schlick 选反射/折射
-                 (全反射时强制反射)`}
-          </pre>
+        <Card title="为什么红墙会把白球染红？">
+          <p className="text-sm text-fg-muted">
+            路径随机撞上红墙 → attenuation 带红色 → 再弹到白球 →
+            相机最终收到的路径里带着红色分量。这是<strong>间接光染色</strong>
+            ，需要足够 spp 与 depth 才能稳定出现。
+          </p>
         </Card>
 
-        <Card title="为什么渐进采样？">
-          <p className="text-sm text-fg-muted">
-            路径追踪是蒙特卡洛积分：每条随机路径是一次估计。spp
-            越多方差越小，画面越干净。浏览器里我们把「最终 100 spp」拆成许多 1
-            spp 的 pass，这样你可以立刻看到粗图，再看着噪点慢慢退去——这就是{" "}
-            <code className="text-fg">samples_done</code> 累加的意义。
-          </p>
+        <Card title="调试视图怎么用">
+          <ul className="list-disc space-y-1 pl-4 text-sm text-fg-muted">
+            <li>法线：检查墙面朝向是否正确</li>
+            <li>深度：检查相机是否在箱子里/外</li>
+            <li>发光体：确认天花板灯几何可见</li>
+            <li>美观：再开长时间采样看间接光</li>
+          </ul>
         </Card>
       </div>
     </section>

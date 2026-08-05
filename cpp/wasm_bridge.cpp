@@ -1,5 +1,4 @@
 // WASM 桥接：把 C++ 渲染器暴露给浏览器 JS
-// 编译目标：Emscripten (emcc)
 #include "renderer.h"
 
 #include <cstdlib>
@@ -34,6 +33,9 @@ EMSCRIPTEN_KEEPALIVE
 void rt_set_background(double r, double g, double b) { g_rt.set_background(r, g, b); }
 
 EMSCRIPTEN_KEEPALIVE
+void rt_set_debug_mode(int mode) { g_rt.set_debug_mode(mode); }
+
+EMSCRIPTEN_KEEPALIVE
 void rt_reset() { g_rt.reset_accum(); }
 
 EMSCRIPTEN_KEEPALIVE
@@ -51,7 +53,9 @@ int rt_samples() { return g_rt.get_samples(); }
 EMSCRIPTEN_KEEPALIVE
 int rt_scene() { return g_rt.get_scene(); }
 
-// 返回 HEAPU8 中的字节偏移，JS 侧用 Module.HEAPU8.subarray 读取
+EMSCRIPTEN_KEEPALIVE
+int rt_debug_mode() { return g_rt.get_debug_mode(); }
+
 EMSCRIPTEN_KEEPALIVE
 unsigned char *rt_rgba_ptr() { return g_rt.get_rgba(); }
 

@@ -43,124 +43,103 @@ flowchart TB
 
 ---
 
-## 2. `ray_color` 状态机
+## 2. 含自发光的 `ray_color`
 
 ```mermaid
-stateDiagram-v2
-  [*] --> CheckDepth
-  CheckDepth --> ReturnBlack: depth <= 0
-  CheckDepth --> TraceWorld: depth > 0
-  TraceWorld --> Sky: 未命中
-  TraceWorld --> Scatter: 命中物体
-  Scatter --> ReturnBlack: 材质吸收
-  Scatter --> CheckDepth: 发出 scattered 射线 depth-1
-  Sky --> [*]
-  ReturnBlack --> [*]
+flowchart TB
+  Start[ray_color] --> Depth{depth > 0?}
+  Depth -->|否| Black[黑色]
+  Depth -->|是| Hit{命中?}
+  Hit -->|否| BG[background<br/>康奈尔箱=黑]
+  Hit -->|是| Debug{debug_mode}
+  Debug -->|1 法线| N[0.5*(n+1)]
+  Debug -->|2 深度| Dep[t 映射灰度]
+  Debug -->|3 发光| E0[emitted only]
+  Debug -->|0 美观| Emit[emit = mat.emitted]
+  Emit --> Sc{scatter?}
+  Sc -->|否| OnlyE[return emit]
+  Sc -->|是| Rec[emit + att * ray_color]
 ```
 
-对应代码：`cpp/camera.h` → `camera::ray_color`。
+对应：`cpp/camera.h`、`cpp/material.h`（`diffuse_light`）。
+
+关键式：
+
+\[
+L = L_e + f_r \cdot L_i
+\]
+
+教学实现里 \(L_e =\) `emitted`，\(f_r \cdot L_i \approx\) `attenuation * ray_color(scattered)`。
 
 ---
 
-## 3. 球求交几何
+## 3. 康奈尔箱几何
+
+```mermaid
+flowchart TB
+  subgraph Room["scene_id = 3"]
+    L[左墙 red lambertian]
+    R[右墙 green lambertian]
+    F[地板 / 顶 / 后 white]
+    Light[天花板 quad + diffuse_light]
+    S1[白球]
+    S2[金属球]
+    S3[玻璃球]
+  end
+  Light -->|直接光| S1
+  L -->|间接染色| S1
+  R -->|间接染色| S1
+```
+
+- 墙与灯：`cpp/quad.h` 平行四边形  
+- 组装：`cpp/scenes.h`  
+
+---
+
+## 4. 球与四边形求交
+
+**球**：二次方程（`sphere.h`）  
+
+**四边形**：射线与平面求 \(t\)，再投影到 \((\alpha,\beta)\in[0,1]^2\)（`quad.h`）
 
 ```mermaid
 flowchart LR
-  O[射线原点 O] --> OC[oc = C - O]
-  D[方向 D] --> A["a = D·D"]
-  OC --> H["h = D·oc"]
-  OC --> Cterm["c = oc·oc - r²"]
-  A --> Disc["Δ = h² - a·c"]
-  H --> Disc
-  Cterm --> Disc
-  Disc -->|Δ < 0| Miss[未命中]
-  Disc -->|Δ ≥ 0| Roots["t = (h ± √Δ) / a"]
-  Roots --> Pick[取 ray_t 内最近根]
+  Ray --> Plane[平面 t]
+  Plane --> UV[α β 平面坐标]
+  UV -->|在 0..1| Hit[命中]
+  UV -->|否| Miss
 ```
-
-对应代码：`cpp/sphere.h`。
 
 ---
 
-## 4. 材质分支
-
-```mermaid
-flowchart TB
-  Hit[hit_record] --> M{动态类型}
-  M -->|lambertian| L["scattered = N + random_unit\nattenuation = albedo"]
-  M -->|metal| Me["reflected + fuzz * random\n需在法线同侧"]
-  M -->|dielectric| D{全反射或 Schlick?}
-  D -->|是| Refl[reflect]
-  D -->|否| Refr[refract]
-```
-
-对应代码：`cpp/material.h`。
-
----
-
-## 5. 相机成像平面
-
-```mermaid
-flowchart TB
-  Look[lookfrom / lookat / vup] --> Basis[正交基 u,v,w]
-  FOV[vfov + focus_dist] --> VP[viewport 宽高]
-  Basis --> VP
-  VP --> Pixel00[pixel00_loc]
-  VP --> Delta[pixel_delta_u/v]
-  Pixel00 --> Sample[像素中心 + 单位方块抖动]
-  Defocus[defocus_angle] --> Disk[光圈圆盘采样]
-  Sample --> Ray[ray origin→sample]
-  Disk --> Ray
-```
-
-对应代码：`cpp/camera.h` → `initialize` / `get_ray`。
-
----
-
-## 6. 渐进累加
-
-设像素颜色估计为随机变量 \(X_i\)，则：
+## 5. 渐进累加
 
 \[
 \hat{L}_N = \frac{1}{N}\sum_{i=1}^{N} X_i
 \]
 
-实现上我们在 `accum` 里存 \(\sum X_i\)，显示时除以 `samples_done`。  
-每调用一次 `render_pass(spp)`，\(N \mathrel{+}= spp\)。
-
-```mermaid
-sequenceDiagram
-  participant JS
-  participant R as renderer
-  Note over JS,R: pass 1 spp=1 → 噪点大
-  JS->>R: render_pass(1)
-  R-->>JS: samples=1
-  Note over JS,R: pass 50 → 明显干净
-  JS->>R: render_pass(1) × 49
-  R-->>JS: samples=50
-```
+`render_pass(spp)` 使 \(N \mathrel{+}= spp\)。面光源场景噪点更大，需要更多 spp 才能看清间接染色。
 
 ---
 
-## 7. WASM 导出表
+## 6. WASM 导出表
 
 | C 符号 | 作用 |
 | --- | --- |
-| `rt_init(w,h,scene)` | 分配缓冲、建场景、重置相机 |
+| `rt_init(w,h,scene)` | 分配缓冲、建场景 |
 | `rt_set_camera(...)` | 更新相机并清空累加 |
-| `rt_set_scene(id)` | 切换场景 |
+| `rt_set_scene(id)` | 切换场景 0..3 |
+| `rt_set_debug_mode(m)` | 0 美观 / 1 法线 / 2 深度 / 3 发光 |
 | `rt_set_max_depth(d)` | 最大反弹 |
-| `rt_render_pass(spp)` | 再采样 spp 次 |
-| `rt_rgba_ptr` | RGBA8 指针（HEAP 偏移） |
-| `rt_samples` | 当前累计样本数 |
+| `rt_render_pass(spp)` | 再采样 |
+| `rt_rgba_ptr` | RGBA8 指针 |
 
 ---
 
-## 8. 下一步可以做什么
+## 7. 下一步
 
-- BVH 加速大量球体
-- 纹理 / 棋盘地面
-- 四边形光源与重要性采样
-- OpenMP / SIMD 或 WebWorker 多实例并行
+- BVH 加速大量物体  
+- 重要性采样面光源（降噪）  
+- 四边形盒子（Cornell 经典方柱）  
 
-每加一块，建议先画一张 Mermaid，再写对应 C++ 头文件。
+每加一块，先画 Mermaid，再写 C++。

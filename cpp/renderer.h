@@ -42,6 +42,11 @@ public:
     reset_accum();
   }
 
+  void set_debug_mode(int mode) {
+    cam.debug_mode = mode < 0 ? 0 : mode;
+    reset_accum();
+  }
+
   void set_scene(int id) {
     scene_id = id;
     build_scene(scene_id, world);
@@ -55,7 +60,6 @@ public:
     samples_done = 0;
   }
 
-  // 再渲染 spp 个样本/像素，并刷新 RGBA 预览
   void render_pass(int spp) {
     if (width <= 0 || height <= 0) return;
     if (spp < 1) spp = 1;
@@ -81,8 +85,22 @@ public:
   int get_height() const { return height; }
   int get_samples() const { return samples_done; }
   int get_scene() const { return scene_id; }
+  int get_debug_mode() const { return cam.debug_mode; }
   unsigned char *get_rgba() { return rgba.data(); }
   size_t rgba_bytes() const { return rgba.size(); }
+
+  // 供 UI 读取默认注视点 / 距离建议
+  void default_look_at(double &x, double &y, double &z) const {
+    if (scene_id == 3) {
+      x = 0;
+      y = 1;
+      z = 0;
+    } else {
+      x = 0;
+      y = 1;
+      z = 0;
+    }
+  }
 
 private:
   int width = 0;
@@ -91,8 +109,8 @@ private:
   int samples_done = 0;
   camera cam;
   hittable_list world;
-  std::vector<double> accum;      // RGB float 累加
-  std::vector<unsigned char> rgba; // 展示用
+  std::vector<double> accum;
+  std::vector<unsigned char> rgba;
 
   void bake_rgba() {
     if (samples_done <= 0) return;
@@ -101,6 +119,7 @@ private:
       color c(accum[static_cast<size_t>(n * 3 + 0)] * inv,
               accum[static_cast<size_t>(n * 3 + 1)] * inv,
               accum[static_cast<size_t>(n * 3 + 2)] * inv);
+      // 调试视图不做过亮曝光，美观模式也走 gamma
       write_color_rgba(&rgba[static_cast<size_t>(n * 4)], c);
     }
   }
@@ -120,6 +139,15 @@ private:
       cam.defocus_angle = 0.0;
       cam.focus_dist = 7.0;
       cam.background = color(0.15, 0.16, 0.2);
+    } else if (scene_id == 3) {
+      // 康奈尔箱：室内黑背景，只靠面光照明
+      cam.lookfrom = point3(0, 1.0, 3.2);
+      cam.lookat = point3(0, 1.0, 0);
+      cam.vfov = 40;
+      cam.defocus_angle = 0.0;
+      cam.focus_dist = 3.2;
+      cam.background = color(0, 0, 0);
+      cam.max_depth = 50;
     } else {
       cam.lookfrom = point3(0, 1.5, 6);
       cam.lookat = point3(0, 1, 0);

@@ -1,4 +1,4 @@
-// 相机：生成主射线 + 景深抖动 + 像素内抗锯齿抖动
+// 相机：生成主射线 + 景深抖动 + 像素内抗锯齿抖动 + 调试视图
 #pragma once
 
 #include "color.h"
@@ -7,19 +7,25 @@
 #include "rt_common.h"
 #include "vec3.h"
 
+// debug_mode:
+// 0 = 美观路径追踪（默认）
+// 1 = 法线着色
+// 2 = 深度（灰度）
+// 3 = 发光体 / 首次命中自发光
 class camera {
 public:
   double aspect_ratio = 16.0 / 9.0;
   int image_width = 400;
-  int max_depth = 50; // 最大反弹深度
+  int max_depth = 50;
+  int debug_mode = 0;
   color background = color(0.70, 0.80, 1.00);
 
-  double vfov = 20; // 垂直视野（度）
+  double vfov = 20;
   point3 lookfrom = point3(13, 2, 3);
   point3 lookat = point3(0, 0, 0);
   vec3 vup = vec3(0, 1, 0);
 
-  double defocus_angle = 0; // 0 = 无景深
+  double defocus_angle = 0;
   double focus_dist = 10;
 
   void initialize(int width, int height) {
@@ -27,7 +33,7 @@ public:
     image_height = height;
     if (image_height < 1) image_height = 1;
     aspect_ratio = double(image_width) / double(image_height);
-    pixel_samples_scale = 1.0; // 累加在外部完成
+    pixel_samples_scale = 1.0;
 
     center = lookfrom;
 
@@ -54,23 +60,42 @@ public:
     defocus_disk_v = v * defocus_radius;
   }
 
-  // 追踪单条射线颜色（递归散射）
+  // 追踪单条射线颜色
   color ray_color(const ray &r, int depth, const hittable &world) const {
     if (depth <= 0) return color(0, 0, 0);
 
     hit_record rec;
-    // 忽略极近命中，减少阴影痤疮
-    if (!world.hit(r, interval(0.001, infinity), rec))
+    if (!world.hit(r, interval(0.001, infinity), rec)) {
+      if (debug_mode != 0) return color(0, 0, 0);
       return background;
+    }
+
+    // —— 调试视图：不走完整路径积分 ——
+    if (debug_mode == 1) {
+      // 法线映射到 [0,1]
+      return 0.5 * color(rec.normal.x() + 1, rec.normal.y() + 1, rec.normal.z() + 1);
+    }
+    if (debug_mode == 2) {
+      // 深度：t 越大越亮（钳制到合理范围）
+      auto d = clamp(rec.t / 12.0, 0.0, 1.0);
+      return color(d, d, d);
+    }
+    if (debug_mode == 3) {
+      // 只看自发光（面光是否命中）
+      return rec.mat->emitted(rec);
+    }
+
+    // —— 美观模式：自发光 + 散射递归 ——
+    color emit = rec.mat->emitted(rec);
 
     ray scattered;
     color attenuation;
-    if (rec.mat->scatter(r, rec, attenuation, scattered))
-      return attenuation * ray_color(scattered, depth - 1, world);
-    return color(0, 0, 0);
+    if (!rec.mat->scatter(r, rec, attenuation, scattered))
+      return emit;
+
+    return emit + attenuation * ray_color(scattered, depth - 1, world);
   }
 
-  // 生成覆盖像素 (i,j) 的一条采样射线
   ray get_ray(int i, int j) const {
     auto offset = sample_square();
     auto pixel_sample = pixel00_loc + ((i + offset.x()) * pixel_delta_u) +

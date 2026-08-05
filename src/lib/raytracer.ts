@@ -1,8 +1,5 @@
 /**
  * C++ WASM 光线追踪桥接层
- *
- * 加载 public/raytracer.js（Emscripten MODULARIZE 产物），
- * 把 C 导出函数包装成类型安全的 TypeScript API。
  */
 
 export type RayTracerApi = {
@@ -20,6 +17,7 @@ export type RayTracerApi = {
   ) => void;
   setScene: (sceneId: number) => void;
   setMaxDepth: (depth: number) => void;
+  setDebugMode: (mode: number) => void;
   reset: () => void;
   renderPass: (spp: number) => void;
   width: () => number;
@@ -48,7 +46,6 @@ declare global {
   }
 }
 
-/** Vite base，GitHub Pages 上为 /cpp-002/，本地为 / */
 function assetUrl(path: string): string {
   const base = import.meta.env.BASE_URL || "/";
   const normalizedBase = base.endsWith("/") ? base : `${base}/`;
@@ -69,7 +66,6 @@ function loadScript(src: string): Promise<void> {
     s.src = src;
     s.async = true;
     s.onload = () => {
-      // 兼容 var 提升到 globalThis 的时序
       if (typeof window.createRayTracerModule !== "function") {
         const g = globalThis as unknown as {
           createRayTracerModule?: Window["createRayTracerModule"];
@@ -142,6 +138,7 @@ export async function createRayTracer(): Promise<RayTracerApi> {
   ]);
   const setScene = wrap<(id: number) => void>("rt_set_scene", null, ["number"]);
   const setMaxDepth = wrap<(d: number) => void>("rt_set_max_depth", null, ["number"]);
+  const setDebugMode = wrap<(m: number) => void>("rt_set_debug_mode", null, ["number"]);
   const reset = wrap<() => void>("rt_reset", null, []);
   const renderPass = wrap<(spp: number) => void>("rt_render_pass", null, ["number"]);
   const width = wrap<() => number>("rt_width", "number", []);
@@ -153,6 +150,7 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     setCamera,
     setScene,
     setMaxDepth,
+    setDebugMode,
     reset,
     renderPass,
     width,
@@ -161,7 +159,6 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     rgba: () => {
       const ptr = mod._rt_rgba_ptr();
       const bytes = mod._rt_rgba_bytes();
-      // 注意：内存增长后 buffer 可能换新，每次重新取视图
       return new Uint8ClampedArray(mod.HEAPU8.buffer, ptr, bytes);
     },
   };

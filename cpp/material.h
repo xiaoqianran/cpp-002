@@ -1,4 +1,4 @@
-// 材质：漫反射 / 金属 / 介质（玻璃）
+// 材质：漫反射 / 金属 / 介质 / 发光体
 #pragma once
 
 #include "hittable.h"
@@ -10,8 +10,21 @@ public:
   virtual ~material() = default;
 
   // 散射：输入入射射线与命中信息，输出衰减 attenuation 与出射 scattered
+  // 返回 false 表示吸收（或纯发光、不再继续追）
   virtual bool scatter(const ray &r_in, const hit_record &rec, color &attenuation,
-                       ray &scattered) const = 0;
+                       ray &scattered) const {
+    (void)r_in;
+    (void)rec;
+    (void)attenuation;
+    (void)scattered;
+    return false;
+  }
+
+  // 自发光（默认不发光）
+  virtual color emitted(const hit_record &rec) const {
+    (void)rec;
+    return color(0, 0, 0);
+  }
 };
 
 // ---------- Lambertian 漫反射 ----------
@@ -22,7 +35,6 @@ public:
   bool scatter(const ray &, const hit_record &rec, color &attenuation,
                ray &scattered) const override {
     auto scatter_direction = rec.normal + random_unit_vector();
-    // 退化：几乎零方向时改用法线
     if (scatter_direction.near_zero()) scatter_direction = rec.normal;
     scattered = ray(rec.p, scatter_direction);
     attenuation = albedo;
@@ -80,10 +92,21 @@ public:
 private:
   double refraction_index;
 
-  // Schlick 近似：视角掠射时玻璃更像镜子
   static double reflectance(double cosine, double refraction_index) {
     auto r0 = (1 - refraction_index) / (1 + refraction_index);
     r0 = r0 * r0;
     return r0 + (1 - r0) * std::pow((1 - cosine), 5);
   }
+};
+
+// ---------- Diffuse light 面光源 / 发光体 ----------
+// 不散射，只返回 emit；正面与背面都发光（教学简化）
+class diffuse_light : public material {
+public:
+  diffuse_light(const color &emit) : emit(emit) {}
+
+  color emitted(const hit_record &) const override { return emit; }
+
+private:
+  color emit;
 };

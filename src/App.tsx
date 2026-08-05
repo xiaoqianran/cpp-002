@@ -11,6 +11,7 @@ import {
   Aperture,
   BookOpen,
   Camera,
+  Eye,
   Layers,
   Pause,
   Play,
@@ -20,13 +21,21 @@ import {
 import { createRayTracer, type RayTracerApi } from "./lib/raytracer";
 import { LearningPanel } from "./components/LearningPanel";
 
-type SceneId = 0 | 1 | 2;
+type SceneId = 0 | 1 | 2 | 3;
 
 const SCENES: { id: SceneId; name: string; desc: string }[] = [
   { id: 0, name: "经典三球", desc: "漫反射 · 玻璃 · 金属" },
   { id: 1, name: "玻璃气泡", desc: "空心介质 + 聚焦" },
   { id: 2, name: "金属走廊", desc: "高光金属阵列" },
+  { id: 3, name: "康奈尔箱", desc: "面光源 + 红绿墙间接光" },
 ];
+
+const DEBUG_MODES = [
+  { id: 0, name: "美观（路径追踪）" },
+  { id: 1, name: "法线" },
+  { id: 2, name: "深度" },
+  { id: 3, name: "发光体" },
+] as const;
 
 const RES_PRESETS = [
   { label: "快速 320×180", w: 320, h: 180 },
@@ -51,6 +60,19 @@ function orbitPosition(
   };
 }
 
+function sceneCameraDefaults(sceneId: SceneId) {
+  if (sceneId === 3) {
+    return { yaw: 0, pitch: 0.02, radius: 3.2, vfov: 40, defocus: 0, maxDepth: 50 };
+  }
+  if (sceneId === 1) {
+    return { yaw: 0.2, pitch: 0.12, radius: 4.5, vfov: 35, defocus: 0.4, maxDepth: 40 };
+  }
+  if (sceneId === 2) {
+    return { yaw: 0, pitch: 0.2, radius: 7, vfov: 28, defocus: 0, maxDepth: 30 };
+  }
+  return { yaw: 0.35, pitch: 0.18, radius: 6.2, vfov: 30, defocus: 0.25, maxDepth: 24 };
+}
+
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const apiRef = useRef<RayTracerApi | null>(null);
@@ -61,15 +83,17 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(true);
   const [samples, setSamples] = useState(0);
-  const [sceneId, setSceneId] = useState<SceneId>(0);
+  const [sceneId, setSceneId] = useState<SceneId>(3);
+  const [debugMode, setDebugMode] = useState(0);
   const [resIdx, setResIdx] = useState(0);
-  const [maxDepth, setMaxDepth] = useState(24);
+  const defaults = sceneCameraDefaults(3);
+  const [maxDepth, setMaxDepth] = useState(defaults.maxDepth);
   const [spp, setSpp] = useState(1);
-  const [vfov, setVfov] = useState(30);
-  const [defocus, setDefocus] = useState(0.25);
-  const [yaw, setYaw] = useState(0.35);
-  const [pitch, setPitch] = useState(0.18);
-  const [radius, setRadius] = useState(6.2);
+  const [vfov, setVfov] = useState(defaults.vfov);
+  const [defocus, setDefocus] = useState(defaults.defocus);
+  const [yaw, setYaw] = useState(defaults.yaw);
+  const [pitch, setPitch] = useState(defaults.pitch);
+  const [radius, setRadius] = useState(defaults.radius);
   const [showLearn, setShowLearn] = useState(true);
   const [passMs, setPassMs] = useState(0);
 
@@ -102,14 +126,26 @@ export default function App() {
     [yaw, pitch, radius, target, vfov, defocus],
   );
 
+  const selectScene = (id: SceneId) => {
+    setSceneId(id);
+    const d = sceneCameraDefaults(id);
+    setYaw(d.yaw);
+    setPitch(d.pitch);
+    setRadius(d.radius);
+    setVfov(d.vfov);
+    setDefocus(d.defocus);
+    setMaxDepth(d.maxDepth);
+  };
+
   const reinit = useCallback(async () => {
     const api = apiRef.current;
     if (!api) return;
     api.init(res.w, res.h, sceneId);
     api.setMaxDepth(maxDepth);
+    api.setDebugMode(debugMode);
     applyCamera(api);
     paint();
-  }, [res.w, res.h, sceneId, maxDepth, applyCamera, paint]);
+  }, [res.w, res.h, sceneId, maxDepth, debugMode, applyCamera, paint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +156,7 @@ export default function App() {
         apiRef.current = api;
         api.init(res.w, res.h, sceneId);
         api.setMaxDepth(maxDepth);
+        api.setDebugMode(debugMode);
         applyCamera(api);
         setStatus("ready");
         paint();
@@ -132,14 +169,13 @@ export default function App() {
       cancelled = true;
       cancelAnimationFrame(rafRef.current);
     };
-    // 仅首次加载模块
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (status !== "ready") return;
     void reinit();
-  }, [resIdx, sceneId, maxDepth, status, reinit]);
+  }, [resIdx, sceneId, maxDepth, debugMode, status, reinit]);
 
   useEffect(() => {
     if (status !== "ready" || !apiRef.current) return;
@@ -182,6 +218,9 @@ export default function App() {
     dragRef.current = null;
   };
 
+  const radiusMax = sceneId === 3 ? 6 : 14;
+  const radiusMin = sceneId === 3 ? 1.8 : 3;
+
   return (
     <div className="min-h-dvh bg-bg text-fg">
       <div className="mx-auto flex max-w-[1400px] flex-col gap-5 px-4 py-5 md:px-6 md:py-8">
@@ -192,7 +231,7 @@ export default function App() {
             </p>
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">光线追踪学习器</h1>
             <p className="max-w-xl text-sm text-fg-muted md:text-base">
-              核心路径追踪用 C++ 实现，经 Emscripten 编译为 WASM 在浏览器渐进渲染。拖动画布可环绕相机。
+              路径追踪 + 面光源康奈尔箱。调试视图可看法线 / 深度 / 发光体。拖动画布环绕相机。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -269,7 +308,7 @@ export default function App() {
                 )}
               </div>
               <p className="border-t border-border px-4 py-2 text-xs text-fg-subtle">
-                拖拽旋转 · 用右侧「距离」拉近/推远 · 采样越多噪点越少
+                康奈尔箱靠天花板面光照明（背景为黑）。采样多了才能看清红绿墙的间接染色。
               </p>
             </div>
 
@@ -287,7 +326,7 @@ export default function App() {
                   <button
                     key={s.id}
                     type="button"
-                    onClick={() => setSceneId(s.id)}
+                    onClick={() => selectScene(s.id)}
                     className={`rounded-[var(--radius-md)] border px-3 py-2.5 text-left transition ${
                       sceneId === s.id
                         ? "border-border-strong bg-bg-subtle"
@@ -296,6 +335,25 @@ export default function App() {
                   >
                     <div className="text-sm font-medium">{s.name}</div>
                     <div className="text-xs text-fg-subtle">{s.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </Panel>
+
+            <Panel title="调试视图" icon={<Eye className="size-4" />}>
+              <div className="grid grid-cols-2 gap-2">
+                {DEBUG_MODES.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setDebugMode(m.id)}
+                    className={`rounded-[var(--radius-sm)] border px-2 py-2 text-left text-xs transition ${
+                      debugMode === m.id
+                        ? "border-border-strong bg-bg-subtle font-medium"
+                        : "border-border bg-bg text-fg-muted hover:text-fg"
+                    }`}
+                  >
+                    {m.name}
                   </button>
                 ))}
               </div>
@@ -327,7 +385,7 @@ export default function App() {
               <Slider
                 label={`反弹深度 = ${maxDepth}`}
                 min={4}
-                max={50}
+                max={80}
                 step={1}
                 value={maxDepth}
                 onChange={setMaxDepth}
@@ -338,15 +396,15 @@ export default function App() {
               <Slider
                 label={`视野 FOV = ${vfov.toFixed(0)}°`}
                 min={15}
-                max={60}
+                max={70}
                 step={1}
                 value={vfov}
                 onChange={setVfov}
               />
               <Slider
                 label={`距离 = ${radius.toFixed(1)}`}
-                min={3}
-                max={14}
+                min={radiusMin}
+                max={radiusMax}
                 step={0.1}
                 value={radius}
                 onChange={setRadius}
