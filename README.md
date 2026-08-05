@@ -5,6 +5,14 @@ C++ 路径追踪 → Emscripten WASM → 浏览器渐进渲染。中文课程对
 - 仓库：https://github.com/xiaoqianran/cpp-002  
 - 演示：https://xiaoqianran.github.io/cpp-002/
 
+## 系列定位
+
+**cpp-002** 已讲完「光线怎么积出正确能量」。
+
+下一课 **[cpp-003](https://github.com/xiaoqianran/cpp-003)** 讲：真实资产怎么进场景、怎么被 BVH 加速、怎么贴上细节——仍是路径追踪，但内容从「球和墙」升级到「能放下一个模型」。
+
+---
+
 ## 架构（三刀后）
 
 ```text
