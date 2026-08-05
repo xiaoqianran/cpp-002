@@ -17,17 +17,19 @@ import {
   Play,
   RotateCcw,
   Sparkles,
+  Boxes,
 } from "lucide-react";
 import { createRayTracer, type RayTracerApi } from "./lib/raytracer";
 import { LearningPanel } from "./components/LearningPanel";
 
-type SceneId = 0 | 1 | 2 | 3;
+type SceneId = 0 | 1 | 2 | 3 | 4;
 
 const SCENES: { id: SceneId; name: string; desc: string }[] = [
   { id: 0, name: "经典三球", desc: "漫反射 · 玻璃 · 金属" },
   { id: 1, name: "玻璃气泡", desc: "空心介质 + 聚焦" },
   { id: 2, name: "金属走廊", desc: "高光金属阵列" },
   { id: 3, name: "康奈尔箱", desc: "面光源 + 红绿墙间接光" },
+  { id: 4, name: "随机多球", desc: "BVH 压力测试 · 二百+ 球" },
 ];
 
 const DEBUG_MODES = [
@@ -61,6 +63,9 @@ function orbitPosition(
 }
 
 function sceneCameraDefaults(sceneId: SceneId) {
+  if (sceneId === 4) {
+    return { yaw: 0.25, pitch: 0.12, radius: 13, vfov: 20, defocus: 0.6, maxDepth: 12 };
+  }
   if (sceneId === 3) {
     return { yaw: 0, pitch: 0.02, radius: 3.2, vfov: 40, defocus: 0, maxDepth: 50 };
   }
@@ -83,10 +88,12 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(true);
   const [samples, setSamples] = useState(0);
-  const [sceneId, setSceneId] = useState<SceneId>(3);
+  const [sceneId, setSceneId] = useState<SceneId>(4);
   const [debugMode, setDebugMode] = useState(0);
+  const [useBvh, setUseBvh] = useState(true);
+  const [primCount, setPrimCount] = useState(0);
   const [resIdx, setResIdx] = useState(0);
-  const defaults = sceneCameraDefaults(3);
+  const defaults = sceneCameraDefaults(4);
   const [maxDepth, setMaxDepth] = useState(defaults.maxDepth);
   const [spp, setSpp] = useState(1);
   const [vfov, setVfov] = useState(defaults.vfov);
@@ -97,7 +104,10 @@ export default function App() {
   const [showLearn, setShowLearn] = useState(true);
   const [passMs, setPassMs] = useState(0);
 
-  const target = useMemo<[number, number, number]>(() => [0, 1, 0], []);
+  const target = useMemo<[number, number, number]>(
+    () => (sceneId === 4 ? [0, 0, 0] : [0, 1, 0]),
+    [sceneId],
+  );
   const res = RES_PRESETS[resIdx]!;
 
   const paint = useCallback(() => {
@@ -116,6 +126,7 @@ export default function App() {
     const img = new ImageData(new Uint8ClampedArray(rgba), w, h);
     ctx.putImageData(img, 0, 0);
     setSamples(api.samples());
+    setPrimCount(api.primitiveCount());
   }, []);
 
   const applyCamera = useCallback(
@@ -140,12 +151,15 @@ export default function App() {
   const reinit = useCallback(async () => {
     const api = apiRef.current;
     if (!api) return;
+    // 先设 BVH，再 init（init 内 rebuild 会读 use_bvh）
+    api.setUseBvh(useBvh);
     api.init(res.w, res.h, sceneId);
+    api.setUseBvh(useBvh);
     api.setMaxDepth(maxDepth);
     api.setDebugMode(debugMode);
     applyCamera(api);
     paint();
-  }, [res.w, res.h, sceneId, maxDepth, debugMode, applyCamera, paint]);
+  }, [res.w, res.h, sceneId, maxDepth, debugMode, useBvh, applyCamera, paint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,7 +168,9 @@ export default function App() {
         const api = await createRayTracer();
         if (cancelled) return;
         apiRef.current = api;
+        api.setUseBvh(useBvh);
         api.init(res.w, res.h, sceneId);
+        api.setUseBvh(useBvh);
         api.setMaxDepth(maxDepth);
         api.setDebugMode(debugMode);
         applyCamera(api);
@@ -175,7 +191,7 @@ export default function App() {
   useEffect(() => {
     if (status !== "ready") return;
     void reinit();
-  }, [resIdx, sceneId, maxDepth, debugMode, status, reinit]);
+  }, [resIdx, sceneId, maxDepth, debugMode, useBvh, status, reinit]);
 
   useEffect(() => {
     if (status !== "ready" || !apiRef.current) return;
@@ -218,8 +234,8 @@ export default function App() {
     dragRef.current = null;
   };
 
-  const radiusMax = sceneId === 3 ? 6 : 14;
-  const radiusMin = sceneId === 3 ? 1.8 : 3;
+  const radiusMax = sceneId === 3 ? 6 : sceneId === 4 ? 20 : 14;
+  const radiusMin = sceneId === 3 ? 1.8 : sceneId === 4 ? 6 : 3;
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
@@ -227,11 +243,11 @@ export default function App() {
         <header className="flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
             <p className="font-mono text-xs tracking-widest text-fg-subtle uppercase">
-              cpp-002 · C++ / WASM
+              cpp-002 · C++ / WASM · BVH
             </p>
             <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">光线追踪学习器</h1>
             <p className="max-w-xl text-sm text-fg-muted md:text-base">
-              路径追踪 + 面光源康奈尔箱。调试视图可看法线 / 深度 / 发光体。拖动画布环绕相机。
+              层次包围盒（BVH）加速求交。切到「随机多球」后开关 BVH，对比每帧毫秒数。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -268,7 +284,7 @@ export default function App() {
                     {status === "loading" && "加载 WASM…"}
                     {status === "error" && "加载失败"}
                     {status === "ready" &&
-                      `${res.w}×${res.h} · ${samples} spp · ${passMs.toFixed(0)} ms/pass`}
+                      `${res.w}×${res.h} · ${samples} spp · ${passMs.toFixed(0)} ms · ${primCount} 体 · BVH ${useBvh ? "开" : "关"}`}
                   </span>
                 </div>
                 <button
@@ -308,7 +324,7 @@ export default function App() {
                 )}
               </div>
               <p className="border-t border-border px-4 py-2 text-xs text-fg-subtle">
-                康奈尔箱靠天花板面光照明（背景为黑）。采样多了才能看清红绿墙的间接染色。
+                多球场景关闭 BVH 会明显变慢（暴力 O(n) vs 约 O(log n)）。
               </p>
             </div>
 
@@ -338,6 +354,25 @@ export default function App() {
                   </button>
                 ))}
               </div>
+            </Panel>
+
+            <Panel title="加速结构" icon={<Boxes className="size-4" />}>
+              <button
+                type="button"
+                data-testid="toggle-bvh"
+                onClick={() => setUseBvh((v) => !v)}
+                className={`flex h-11 w-full items-center justify-between rounded-[var(--radius-md)] border px-3 text-sm transition ${
+                  useBvh
+                    ? "border-border-strong bg-bg-subtle"
+                    : "border-border bg-bg text-fg-muted"
+                }`}
+              >
+                <span>BVH 层次包围盒</span>
+                <span className="font-mono text-xs">{useBvh ? "ON" : "OFF"}</span>
+              </button>
+              <p className="text-xs text-fg-subtle">
+                在「随机多球」对比状态栏 ms。图元 {primCount || "—"}。
+              </p>
             </Panel>
 
             <Panel title="调试视图" icon={<Eye className="size-4" />}>

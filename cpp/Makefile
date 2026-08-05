@@ -1,8 +1,4 @@
 # cpp-002 构建脚本
-# - make wasm   : 浏览器 WASM
-# - make cli    : 本地 g++ CLI（输出 PPM）
-# - make all
-
 EMSDK_ENV ?= /opt/emsdk/emsdk_env.sh
 EMCC ?= emcc
 CXX ?= g++
@@ -17,7 +13,7 @@ WASM_FLAGS := -O3 -std=c++17 \
 	-s EXPORT_NAME=createRayTracerModule \
 	-s ALLOW_MEMORY_GROWTH=1 \
 	-s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","HEAPU8"]' \
-	-s EXPORTED_FUNCTIONS='["_rt_init","_rt_set_camera","_rt_set_scene","_rt_set_max_depth","_rt_set_background","_rt_set_debug_mode","_rt_reset","_rt_render_pass","_rt_width","_rt_height","_rt_samples","_rt_scene","_rt_debug_mode","_rt_rgba_ptr","_rt_rgba_bytes","_malloc","_free"]' \
+	-s EXPORTED_FUNCTIONS='["_rt_init","_rt_set_camera","_rt_set_scene","_rt_set_max_depth","_rt_set_background","_rt_set_debug_mode","_rt_set_use_bvh","_rt_reset","_rt_render_pass","_rt_width","_rt_height","_rt_samples","_rt_scene","_rt_debug_mode","_rt_use_bvh","_rt_primitive_count","_rt_rgba_ptr","_rt_rgba_bytes","_malloc","_free"]' \
 	-s NO_EXIT_RUNTIME=1 \
 	-s ENVIRONMENT=web \
 	--no-entry

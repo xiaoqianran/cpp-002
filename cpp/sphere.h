@@ -1,4 +1,4 @@
-// 球体：解析求交 (t^2 b·b + 2t b·(O-C) + |O-C|^2 - r^2 = 0)
+// 球体：解析求交 + AABB
 #pragma once
 
 #include "hittable.h"
@@ -7,19 +7,20 @@
 class sphere : public hittable {
 public:
   sphere(const point3 &center, double radius, shared_ptr<material> mat)
-      : center(center), radius(std::fmax(0, radius)), mat(mat) {}
+      : center(center), radius(std::fmax(0, radius)), mat(mat) {
+    auto rvec = vec3(radius, radius, radius);
+    bbox = aabb(center - rvec, center + rvec);
+  }
 
   bool hit(const ray &r, interval ray_t, hit_record &rec) const override {
     vec3 oc = center - r.origin();
     auto a = r.direction().length_squared();
-    auto h = dot(r.direction(), oc); // 半 b，减少运算
+    auto h = dot(r.direction(), oc);
     auto c = oc.length_squared() - radius * radius;
     auto discriminant = h * h - a * c;
     if (discriminant < 0) return false;
 
     auto sqrtd = std::sqrt(discriminant);
-
-    // 找落在 ray_t 内的最近根
     auto root = (h - sqrtd) / a;
     if (!ray_t.surrounds(root)) {
       root = (h + sqrtd) / a;
@@ -34,8 +35,11 @@ public:
     return true;
   }
 
+  aabb bounding_box() const override { return bbox; }
+
 private:
   point3 center;
   double radius;
   shared_ptr<material> mat;
+  aabb bbox;
 };

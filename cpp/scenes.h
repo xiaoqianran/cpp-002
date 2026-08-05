@@ -7,10 +7,11 @@
 #include "sphere.h"
 
 // scene_id:
-// 0 = 经典三球 + 地面
+// 0 = 经典三球
 // 1 = 玻璃聚焦
 // 2 = 金属走廊
-// 3 = 康奈尔箱（红绿墙 + 天花板面光）
+// 3 = 康奈尔箱
+// 4 = 多球（BVH 压力测试；确定性布局，可重复对比）
 inline void build_scene(int scene_id, hittable_list &world) {
   world.clear();
 
@@ -46,30 +47,59 @@ inline void build_scene(int scene_id, hittable_list &world) {
   }
 
   if (scene_id == 3) {
-    // 康奈尔箱：房间约 x,z ∈ [-1,1]，y ∈ [0,2]
     auto red = make_shared<lambertian>(color(0.65, 0.05, 0.05));
     auto green = make_shared<lambertian>(color(0.12, 0.45, 0.15));
     auto white = make_shared<lambertian>(color(0.73, 0.73, 0.73));
     auto light = make_shared<diffuse_light>(color(15, 15, 15));
 
-    // 左墙 x=-1（红）
     world.add(make_shared<quad>(point3(-1, 0, -1), vec3(0, 0, 2), vec3(0, 2, 0), red));
-    // 右墙 x=+1（绿）
     world.add(make_shared<quad>(point3(1, 0, 1), vec3(0, 0, -2), vec3(0, 2, 0), green));
-    // 地板 y=0
     world.add(make_shared<quad>(point3(-1, 0, -1), vec3(2, 0, 0), vec3(0, 0, 2), white));
-    // 天花板 y=2
     world.add(make_shared<quad>(point3(-1, 2, 1), vec3(2, 0, 0), vec3(0, 0, -2), white));
-    // 后墙 z=-1
     world.add(make_shared<quad>(point3(-1, 0, -1), vec3(2, 0, 0), vec3(0, 2, 0), white));
-
-    // 天花板面光（略低于顶，避免 z-fight）
     world.add(make_shared<quad>(point3(-0.35, 1.99, -0.35), vec3(0.7, 0, 0), vec3(0, 0, 0.7), light));
 
-    // 箱内物体：白漫反射球 + 金属球 + 玻璃球
     world.add(make_shared<sphere>(point3(-0.35, 0.35, 0.15), 0.35, white));
-    world.add(make_shared<sphere>(point3(0.4, 0.35, -0.25), 0.35, make_shared<metal>(color(0.9, 0.9, 0.95), 0.05)));
+    world.add(make_shared<sphere>(point3(0.4, 0.35, -0.25), 0.35,
+                                  make_shared<metal>(color(0.9, 0.9, 0.95), 0.05)));
     world.add(make_shared<sphere>(point3(0.05, 0.25, 0.45), 0.25, make_shared<dielectric>(1.5)));
+    return;
+  }
+
+  if (scene_id == 4) {
+    // 有限地面：AABB 小，BVH 才能剪枝（超大球会毁掉加速）
+    auto ground_mat = make_shared<lambertian>(color(0.48, 0.48, 0.48));
+    world.add(make_shared<quad>(point3(-12, 0, -12), vec3(24, 0, 0), vec3(0, 0, 24), ground_mat));
+
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, make_shared<dielectric>(1.5)));
+    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, make_shared<lambertian>(color(0.4, 0.2, 0.1))));
+    world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, make_shared<metal>(color(0.7, 0.6, 0.5), 0.0)));
+
+    // 确定性抖动：用整数 hash，开关 BVH 时场景不变
+    for (int a = -7; a < 8; a++) {
+      for (int b = -7; b < 8; b++) {
+        int h = a * 73856093 ^ b * 19349663;
+        auto u = ((h & 1023) / 1023.0);
+        auto v = (((h >> 10) & 1023) / 1023.0);
+        auto choose = (((h >> 20) & 1023) / 1023.0);
+        point3 center(a + 0.9 * u, 0.2, b + 0.9 * v);
+
+        if ((center - point3(0, 1, 0)).length() < 1.3) continue;
+        if ((center - point3(-4, 1, 0)).length() < 1.3) continue;
+        if ((center - point3(4, 1, 0)).length() < 1.3) continue;
+
+        shared_ptr<material> mat;
+        if (choose < 0.75) {
+          auto albedo = color(0.2 + 0.6 * u, 0.15 + 0.5 * v, 0.2 + 0.5 * (1 - u));
+          mat = make_shared<lambertian>(albedo);
+        } else if (choose < 0.92) {
+          mat = make_shared<metal>(color(0.6 + 0.3 * u, 0.6 + 0.3 * v, 0.7), 0.1 + 0.3 * v);
+        } else {
+          mat = make_shared<dielectric>(1.5);
+        }
+        world.add(make_shared<sphere>(center, 0.2, mat));
+      }
+    }
     return;
   }
 

@@ -18,11 +18,14 @@ export type RayTracerApi = {
   setScene: (sceneId: number) => void;
   setMaxDepth: (depth: number) => void;
   setDebugMode: (mode: number) => void;
+  setUseBvh: (enabled: boolean) => void;
   reset: () => void;
   renderPass: (spp: number) => void;
   width: () => number;
   height: () => number;
   samples: () => number;
+  useBvh: () => number;
+  primitiveCount: () => number;
   rgba: () => Uint8ClampedArray;
 };
 
@@ -139,11 +142,14 @@ export async function createRayTracer(): Promise<RayTracerApi> {
   const setScene = wrap<(id: number) => void>("rt_set_scene", null, ["number"]);
   const setMaxDepth = wrap<(d: number) => void>("rt_set_max_depth", null, ["number"]);
   const setDebugMode = wrap<(m: number) => void>("rt_set_debug_mode", null, ["number"]);
+  const setUseBvhRaw = wrap<(e: number) => void>("rt_set_use_bvh", null, ["number"]);
   const reset = wrap<() => void>("rt_reset", null, []);
   const renderPass = wrap<(spp: number) => void>("rt_render_pass", null, ["number"]);
   const width = wrap<() => number>("rt_width", "number", []);
   const height = wrap<() => number>("rt_height", "number", []);
   const samples = wrap<() => number>("rt_samples", "number", []);
+  const useBvh = wrap<() => number>("rt_use_bvh", "number", []);
+  const primitiveCount = wrap<() => number>("rt_primitive_count", "number", []);
 
   return {
     init,
@@ -151,11 +157,14 @@ export async function createRayTracer(): Promise<RayTracerApi> {
     setScene,
     setMaxDepth,
     setDebugMode,
+    setUseBvh: (enabled: boolean) => setUseBvhRaw(enabled ? 1 : 0),
     reset,
     renderPass,
     width,
     height,
     samples,
+    useBvh,
+    primitiveCount,
     rgba: () => {
       const ptr = mod._rt_rgba_ptr();
       const bytes = mod._rt_rgba_bytes();

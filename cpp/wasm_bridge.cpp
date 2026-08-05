@@ -1,4 +1,4 @@
-// WASM 桥接：把 C++ 渲染器暴露给浏览器 JS
+// WASM 桥接
 #include "renderer.h"
 
 #include <cstdlib>
@@ -36,6 +36,9 @@ EMSCRIPTEN_KEEPALIVE
 void rt_set_debug_mode(int mode) { g_rt.set_debug_mode(mode); }
 
 EMSCRIPTEN_KEEPALIVE
+void rt_set_use_bvh(int enabled) { g_rt.set_use_bvh(enabled); }
+
+EMSCRIPTEN_KEEPALIVE
 void rt_reset() { g_rt.reset_accum(); }
 
 EMSCRIPTEN_KEEPALIVE
@@ -55,6 +58,12 @@ int rt_scene() { return g_rt.get_scene(); }
 
 EMSCRIPTEN_KEEPALIVE
 int rt_debug_mode() { return g_rt.get_debug_mode(); }
+
+EMSCRIPTEN_KEEPALIVE
+int rt_use_bvh() { return g_rt.get_use_bvh(); }
+
+EMSCRIPTEN_KEEPALIVE
+int rt_primitive_count() { return g_rt.get_primitive_count(); }
 
 EMSCRIPTEN_KEEPALIVE
 unsigned char *rt_rgba_ptr() { return g_rt.get_rgba(); }
