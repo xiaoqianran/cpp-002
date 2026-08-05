@@ -1,43 +1,36 @@
-# 架构深潜
+# 架构（第一刀后）
 
-## 采样栈
+## 原则
+
+1. **前端只持有一份 `EngineConfig`**
+2. **`useEngine` 是唯一把 Config 投影到 C++ 的地方**
+3. **课程只返回 `ConfigPatch`，不碰 WASM**
+4. **C++ 算法层暂不动**（第二刀再拆 camera/integrator）
 
 ```mermaid
-flowchart TB
-  Cam[相机射线] --> Hit{命中}
-  Hit -->|灯| CamEmit[直视 emit]
-  Hit -->|朗伯| NEE[NEE 面光 × MIS_w]
-  Hit -->|任意| Scatter[BSDF 散射]
-  Scatter --> RR{bounce≥3 RR?}
-  RR -->|死| Stop
-  RR -->|活| Hit2[递归]
-  Hit2 -->|灯| MisEmit[emit × MIS_w]
+flowchart LR
+  App["App.tsx 壳"] --> Cfg["EngineConfig"]
+  Cfg --> Hook["useEngine"]
+  Hook --> Apply["applyConfig"]
+  Apply --> WASM["raytracer.wasm"]
+  Course["Curriculum"] -->|patch| Cfg
+  Controls --> Cfg
+  Viewport --> Cfg
 ```
 
-## MIS
+## 目录
 
-\[
-w(p,q)=\frac{p^2}{p^2+q^2}
-\]
+```text
+src/
+  engine/     types · wasm · applyConfig · useEngine
+  lab/        Viewport · Controls · ui
+  components/ Curriculum · Mermaid · LearningPanel
+  curriculum/ 课程数据
+  App.tsx     ≤150 行布局
+cpp/          渲染内核（下一刀拆 integrator）
+```
 
-- 灯策略贡献 × \(w(\mathrm{pdf}_L,\mathrm{pdf}_f)\)
-- BSDF 撞灯 × \(w(\mathrm{pdf}_f,\mathrm{pdf}_L)\)
+## 同步策略
 
-## 俄罗斯轮盘
-
-bounce ≥ 3：\(p=\mathrm{clamp}(\max(\rho),0.05,0.95)\)；死亡则停，存活则 \(\rho/=p\)。
-
-## SAH-BVH
-
-代价：\(C = C_\mathrm{trav} + (A_L N_L + A_R N_R)/A_\mathrm{parent}\)
-
-12 桶扫描三轴，取最小代价划分。
-
-## 开关
-
-| 标志 | 作用 |
-|------|------|
-| BVH | SAH 树 / 暴力列表 |
-| NEE | 面光直接采样 |
-| MIS | 平衡启发 |
-| RR | 路径截断 |
+- 场景 / 分辨率 / 开关 / 深度 / 调试 → `applyConfig`（重建）
+- 仅轨道 / FOV / 光圈 → `applyCameraOnly`（不清场景）
